@@ -1,0 +1,7 @@
+GPUtil
+IPython
+numpy
+pandas
+psutil
+scipy
+sympy
