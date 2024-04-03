@@ -2,14 +2,14 @@ from distutils.command import install_data
 from setuptools import setup, find_packages
 
 setup(
-    name='mxwpy',  # package name
-    version='0.2.3',  # version
+    name='specnn4pde',  # package name
+    version='0.0.2',  # version
     author='MXWeng',  # author name
     author_email='2431141461@qq.com',  # author email
-    description='efficient numerical schemes',  # short description
+    description='Solving partial differential equations using spectral methods and neural networks.',  # short description
     long_description=open('README.md').read(),  # long description, usually your README
     long_description_content_type='text/markdown',  # format of the long description, 'text/markdown' if it's Markdown
-    url='https://github.com/mxweng/mxwpy',  # project homepage
+    url='https://github.com/mxweng/specnn4pde',  # project homepage
     packages=find_packages(),  # automatically discover all packages
     classifiers=[
         'Development Status :: 3 - Alpha',
