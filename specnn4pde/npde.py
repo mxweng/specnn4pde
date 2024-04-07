@@ -240,7 +240,7 @@ def meshgrid_to_matrix(inputs, indexing='xy'):
     return torch.cat([c.reshape(-1,1) for c in Co], dim=1)
 
 
-def gen_collo(Domain, grids, temporal = False, corner = True):
+def gen_collo(Domain = [], grids = [], temporal = False, corner = True, G = None):
     """
     Generate the collocation points for the PDE problem on regular domain.
     If Domain and grids are provided, the uniform grids will be generated automatically as G.

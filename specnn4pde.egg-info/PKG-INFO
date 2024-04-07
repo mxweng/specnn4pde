@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: specnn4pde
-Version: 0.0.3
+Version: 0.0.4
 Summary: Solving partial differential equations using spectral methods and neural networks.
 Home-page: https://github.com/mxweng/specnn4pde
 Author: MXWeng
@@ -32,7 +32,7 @@ SpecNN4PDE is an under development Python library for solving partial differenti
 
 - `spectral`: Provides functions for working with spectral methods as described in the book [Spectral Methods: Algorithms, Analysis and Applications](https://link.springer.com/book/10.1007/978-3-540-71041-7) by Shen, Tang, and Wang.
 - `linalg`: This module primarily focuses on numerical algebra methods.
-- `tools`: A collection of utility functions for system and package information retrieval, time measurement, etc.
+- `utils`: A collection of utility functions for system and package information retrieval, time measurement, etc.
 - `npde`: Functions for solving partial differential equations, e.g., calculating the multivariate derivatives.
 
 This project is still in the early stages of development, and the API is subject to change. The library is designed to be used in research and educational settings.
