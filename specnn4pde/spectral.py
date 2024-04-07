@@ -389,7 +389,7 @@ def glue1D(interval, Ncell, D, r, w, end_pts = False):
 
     Parameters
     ----------
-    interval : list or tuple, length 2
+    interval : (2,) array_like
         The left and right edge of the domain.
     Ncell : int
         The number of cells.
@@ -434,7 +434,7 @@ def glue_pts_1D(interval, Ncell, r, end_pts = False):
 
     Parameters
     ----------
-    interval : list or tuple, length 2
+    interval : (2,) array_like
         The left and right edge of the domain.
     Ncell : int
         The number of cells.
