@@ -6,6 +6,7 @@ import numpy as np
 def ROU_cholesky(L, v, alpha=1, beta=1):
     """
     Perform a rank-one update of the Cholesky decomposition of a matrix.
+    The complexity of the rank-one update is O(n^2), where n is the size of the matrix.
 
     Parameters
     ----------

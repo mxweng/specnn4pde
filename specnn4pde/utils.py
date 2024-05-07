@@ -1,6 +1,7 @@
-__all__ = ['pkg_system_info', 'func_timer', 'timer',
+__all__ = ['pkg_system_info', 'svg2pdf', 'func_timer', 'timer',
            ]
 
+import os
 import platform
 import psutil
 import pandas as pd
@@ -110,7 +111,33 @@ def pkg_system_info(packages, show_pkg=True, show_gpu=True, show_system=True):
         display(HTML(system_info_df.to_html(index=False)))
 
 
+def svg2pdf(directory, inkscape_path=None):
+    """
+    Convert all SVG files in a directory to PDF using Inkscape.
 
+    This function is only tested on Windows and it requires 
+    Inkscape to be installed on your system. 
+    You can download it from https://inkscape.org/release/ and install it.
+
+    Parameters:
+    ----------
+    directory (str): The directory that contains the SVG files.
+    inkscape_path (str, optional): The path to the Inkscape executable. 
+        If not provided, the function will use "inkscape" as the default value, 
+        assuming that Inkscape is in the system's PATH.
+
+    Example:
+    ----------
+    >>> convert_svg_to_pdf(r'D:/path/to/your/directory')
+    """
+    if inkscape_path is None:
+        inkscape_path = "inkscape"
+    for filename in os.listdir(directory):
+        if filename.endswith(".svg"):
+            svg_file = os.path.join(directory, filename)
+            pdf_file = os.path.join(directory, os.path.splitext(filename)[0] + ".pdf")
+            command = f'"{inkscape_path}" "{svg_file}" --export-filename="{pdf_file}"'
+            subprocess.run(command, shell=True)
 
 def func_timer(function):
     """

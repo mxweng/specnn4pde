@@ -361,23 +361,23 @@ def mapped_Jacobi_Gauss(alpha, beta, N, sf = 1, mapping = 'alg'):
 
     if mapping == 'alg':
         map_expr = s * y / sqrt(1 - y**2)
-        diff_map_expr = diff(map_expr, y)
     elif mapping == 'log':
         map_expr = s * atanh(y)
-        diff_map_expr = diff(map_expr, y)
     elif mapping == 'exp':
         map_expr = sinh(s * y)
-        diff_map_expr = diff(map_expr, y)
     else:
         raise ValueError("Invalid mapping function. Please choose from 'alg', 'log' and 'exp'.")
-
-    map = lambdify((y, s), map_expr, "numpy")
+    
+    diff_map_expr = diff(map_expr, y)
+    Map = lambdify((y, s), map_expr, "numpy")
     diff_map = lambdify((y, s), diff_map_expr, "numpy")
 
     D, r, w = Jacobi_Gauss(alpha, beta, N)
     omega = (1 - r)**alpha * (1 + r)**beta
     diff_g = diff_map(r, sf)
-    D, r, w = D / diff_g[:, None], map(r, sf), w / omega * diff_g
+    # here we use the chain rule to compute the derivative of the mapped Jacobi-Gauss quadrature
+    # if the weight function is known, we can directly compute the derivative of the weight function (cf. P261 equ(7.93))
+    D, r, w = D / diff_g[:, None], Map(r, sf), w / omega * diff_g
     return D, r, w
 
 

@@ -240,7 +240,8 @@ def meshgrid_to_matrix(inputs, indexing='xy'):
     return torch.cat([c.reshape(-1,1) for c in Co], dim=1)
 
 
-def gen_collo(Domain = [], grids = [], temporal = False, corner = True, G = None):
+def gen_collo(Domain = [], grids = [], temporal = False, corner = True, G = None,
+              dtype = torch.float32, device = 'cpu'):
     """
     Generate the collocation points for the PDE problem on regular domain.
     If Domain and grids are provided, the uniform grids will be generated automatically as G.
@@ -259,6 +260,10 @@ def gen_collo(Domain = [], grids = [], temporal = False, corner = True, G = None
     G : list of tensor, optional
         The tensors in the list are the collocation points in each dimension.
         If Domain and grids are not provided, G should be provided.
+    dtype : torch.dtype, optional
+        The data type of the collocation points. The default is torch.float32.
+    device : str, optional
+        The device of the collocation points. The default is 'cpu'.
     
     Returns
     -------
@@ -300,7 +305,7 @@ def gen_collo(Domain = [], grids = [], temporal = False, corner = True, G = None
                 grids = grids * dim
             else:
                 raise ValueError("The length of grids should be equal to the dimension of the domain.")
-        G = [torch.linspace(l, r, n) for l, r, n in zip(*(Domain + [grids]))]
+        G = [torch.linspace(l, r, n, dtype=dtype, device=device) for l, r, n in zip(*(Domain + [grids]))]
     dim = len(G)
     if temporal:
         G_rs = [G[0][1:]] + [G[i][1:-1] for i in range(1, dim)]
