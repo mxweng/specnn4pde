@@ -4,6 +4,7 @@ __all__ = ['gradients', 'Jacobian', 'partial_derivative', 'partial_derivative_ve
 
 import torch
 from torch.autograd.functional import jacobian
+from typing import Optional, Union
 
 
 def gradients(u, x, order=1, retain_graph=False):
@@ -241,7 +242,7 @@ def meshgrid_to_matrix(inputs, indexing='xy'):
 
 
 def gen_collo(Domain = [], grids = [], temporal = False, corner = True, G = None,
-              dtype = torch.float32, device = 'cpu'):
+              dtype = torch.float32, device: Optional[Union[torch.device, str]] = 'cpu'):
     """
     Generate the collocation points for the PDE problem on regular domain.
     If Domain and grids are provided, the uniform grids will be generated automatically as G.
@@ -256,7 +257,7 @@ def gen_collo(Domain = [], grids = [], temporal = False, corner = True, G = None
     temporal : bool, optional
         If the problem is temporal. The default is False.
     corner : bool, optional
-        If the collocation points include the corner points. The default is True.
+        If the collocation points include the corner points of the domain. The default is True.
     G : list of tensor, optional
         The tensors in the list are the collocation points in each dimension.
         If Domain and grids are not provided, G should be provided.
@@ -306,6 +307,8 @@ def gen_collo(Domain = [], grids = [], temporal = False, corner = True, G = None
             else:
                 raise ValueError("The length of grids should be equal to the dimension of the domain.")
         G = [torch.linspace(l, r, n, dtype=dtype, device=device) for l, r, n in zip(*(Domain + [grids]))]
+    else:
+        G = [torch.as_tensor(g, dtype=dtype, device=device) for g in G]
     dim = len(G)
     if temporal:
         G_rs = [G[0][1:]] + [G[i][1:-1] for i in range(1, dim)]

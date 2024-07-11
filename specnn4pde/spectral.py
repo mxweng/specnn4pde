@@ -105,18 +105,20 @@ def Jacobi_Gauss(alpha, beta, N):
     h1 = 2.0 * np.arange(N) + alpha + beta
     h11, h12, h13 = h1 + 1, h1 + 2, h1 + 3
     h2 = 1.0 * np.arange(1, N)
+    h22 = h2 + alpha + beta
     # Adjust h1, h11, h12 values based on alpha and beta
     # to avoid division by zero
     if abs(alpha + beta) < 10 * np.finfo(float).eps:
         h1[0] = 1.0
     elif abs(alpha + beta + 1) < 10 * np.finfo(float).eps:
         h11[0] = 1.0
+        h22[0] = 1.0
     elif abs(alpha + beta + 2) < 10 * np.finfo(float).eps:
         h1[1], h12[0] = 1.0, 1.0
 
-    # equation (3.142) symmetric tridiagonal matrix A_{N+1}
+    # equation (3.142) symmetric tridiagonal matrix A_N}
     A = diags(0.5 * (beta**2 - alpha**2) / h12 / h1).toarray() + \
-        diags(2 / h12[:-1] * np.sqrt(h2 * (h2 + alpha + beta) * \
+        diags(2 / h12[:-1] * np.sqrt(h2 * h22 * \
         (h2 + alpha) * (h2 + beta) / h11[:-1] / h13[:-1]), 1).toarray()
 
     r, V = eigh(A + A.T)
