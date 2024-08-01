@@ -27,6 +27,7 @@ setup(
     python_requires='>=3.6',  # Python version requirement
     install_requires=['GPUtil',                      
                       'IPython',
+                      'matplotlib',
                       'numpy', 
                       'pandas',               
                       'psutil', 

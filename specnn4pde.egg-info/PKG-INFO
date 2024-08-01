@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: specnn4pde
-Version: 0.0.6
+Version: 0.0.7
 Summary: Solving partial differential equations using spectral methods and neural networks.
 Home-page: https://github.com/mxweng/specnn4pde
 Author: MXWeng

@@ -28,6 +28,22 @@ lines[i] = f"    version='{major}.{minor}.{patch}',  # version\n"
 with open('setup.py', 'w') as f:
     f.writelines(lines)
 
+# 更新__init__.py文件中的__version__
+init_file = 'specnn4pde/__init__.py'
+with open(init_file, 'r') as f:
+    init_lines = f.readlines()
+
+for i, line in enumerate(init_lines):
+    if line.startswith('__version__'):
+        init_lines[i] = f"__version__ = '{major}.{minor}.{patch}'\n"
+        break
+else:
+    # 如果没有找到__version__，则添加
+    init_lines.append(f"__version__ = '{major}.{minor}.{patch}'\n")
+
+with open(init_file, 'w') as f:
+    f.writelines(init_lines)
+
 # 添加所有更改到git
 os.system('git add .')
 
