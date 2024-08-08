@@ -29,8 +29,10 @@ setup(
                       'IPython',
                       'matplotlib',
                       'numpy', 
-                      'pandas',               
+                      'pandas',
+                      'Pillow',  # add Pillow for PIL               
                       'psutil', 
+                      'PyPDF2>=3.0.0',
                       'scipy',
                       'sympy',
                       ],  # dependencies

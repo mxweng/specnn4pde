@@ -1,5 +1,5 @@
-__all__ = ['pkg_system_info', 'svg2pdf', 'func_timer', 'timer',
-           'ax_config', 'ax3d_config', 'plot_latex_render', 'colorbar_config',
+__all__ = ['pkg_system_info', 'convert2pdf', 'func_timer', 'timer',
+           'ax_config', 'ax3d_config', 'latex_render', 'colorbar_config',
            ]
 
 import os
@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 import GPUtil
 import importlib
 import subprocess
+from PIL import Image
+import PyPDF2
 
 import time
 from functools import wraps
@@ -113,33 +115,71 @@ def pkg_system_info(packages, show_pkg=True, show_system=True, show_gpu=True):
         display(HTML(system_info_df.to_html(index=False)))
 
 
-def svg2pdf(directory, inkscape_path=None):
+def convert2pdf(directory, inkscape_path=None, extension=(".pdf", ".png", ".jpg", ".jpeg"), 
+                merge=False, output_path=None, output_name="merged.pdf"):
     """
-    Convert all SVG files in a directory to PDF using Inkscape.
+    Convert images in the specified directory to PDF format. Optionally merge them into a single PDF file.
 
     This function is only tested on Windows and it requires 
-    Inkscape to be installed on your system. 
-    You can download it from https://inkscape.org/release/ and install it.
+    Inkscape to be installed on your system for SVG conversion.
+    You can download Inkscape from https://inkscape.org/release/ and install it.
 
     Parameters:
     ----------
-    directory (str): The directory that contains the SVG files.
-    inkscape_path (str, optional): The path to the Inkscape executable. 
-        If not provided, the function will use "inkscape" as the default value, 
-        assuming that Inkscape is in the system's PATH.
+    directory (str): The path to the directory containing images.
+    inkscape_path (str): The path to the Inkscape executable (if needed for SVG conversion).
+    extension (tuple): A tuple of file extensions to include in the conversion.
+    merge (bool): Whether to merge all images into a single PDF file.
+    output_path (str): The path to save the output PDF file(s).
+    output_name (str): The name of the merged PDF file (if merge is True).
 
     Example:
     ----------
-    >>> convert_svg_to_pdf(r'D:/path/to/your/directory')
+    >>> convert2pdf(r'D:/path/to/your/directory')
     """
+
     if inkscape_path is None:
         inkscape_path = "inkscape"
+
+    if output_path is None:
+        output_path = directory
+
+    if merge and (output_name in os.listdir(output_path)):
+        raise ValueError("The output directory already contains a file named 'merged.pdf'. Please provide a different name for the output file.")
+
+    temp_pdfs = []
+    remove_pdfs = []
     for filename in os.listdir(directory):
-        if filename.endswith(".svg"):
-            svg_file = os.path.join(directory, filename)
-            pdf_file = os.path.join(directory, os.path.splitext(filename)[0] + ".pdf")
-            command = f'"{inkscape_path}" "{svg_file}" --export-filename="{pdf_file}"'
-            subprocess.run(command, shell=True)
+        if filename.endswith(extension):
+            image_file = os.path.join(directory, filename)
+            pdf_file = os.path.join(output_path, os.path.splitext(filename)[0] + ".pdf")
+            temp_pdfs.append(pdf_file)
+            
+            if filename.lower().endswith(".pdf"):
+                pass
+            elif filename.lower().endswith(".svg"):
+                command = f'"{inkscape_path}" "{image_file}" --export-filename="{pdf_file}"'
+                subprocess.run(command, shell=True)
+                remove_pdfs.append(pdf_file)
+            else:
+                image = Image.open(image_file).convert('RGB')
+                image.save(pdf_file)
+                remove_pdfs.append(pdf_file)
+        
+    print(f"Conversion completed! {len(temp_pdfs)} PDF files have been created.")
+
+    if merge:
+        merger = PyPDF2.PdfMerger()
+        for pdf in temp_pdfs:
+            merger.append(pdf)
+
+        merger.write(os.path.join(output_path, output_name))
+        merger.close()
+
+        for pdf in remove_pdfs:
+            os.remove(pdf)
+        
+        print(f"PDF files have been merged into {output_name}.")
 
 
 def func_timer(function):
@@ -443,7 +483,7 @@ def ax3d_config(ax, axis3don=True, view_angle=[5, 45],
         ax.set_box_aspect(box_aspect)
 
 
-def plot_latex_render(flag=True):
+def latex_render(flag=True):
     """
     Enable or disable LaTeX rendering in matplotlib plots.
 
