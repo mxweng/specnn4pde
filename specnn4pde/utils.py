@@ -275,6 +275,7 @@ def ax_config(ax,
             title=None, title_fontsize=13.,
             xlabel=None, xlabel_fontsize=13.,
             ylabel=None, ylabel_fontsize=13.,
+            xlims=None, ylims=None,
             spine_width=0.8, spine_color='gray',
             tick_major=True, 
             xtick_major=None, ytick_major=None,
@@ -308,6 +309,8 @@ def ax_config(ax,
     xlabel_fontsize (float): Font size of the x-axis label.
     ylabel (str): Label of the y-axis.
     ylabel_fontsize (float): Font size of the y-axis label.
+    xlims (2-tuple): Limits of the x-axis.
+    ylims (2-tuple): Limits of the y-axis.
     spine_width (float): Width of the spines.
     spine_color (str): Color of the spines.
     tick_major (bool): Whether to configure major ticks.
@@ -355,6 +358,10 @@ def ax_config(ax,
         ax.set_xlabel(xlabel, fontsize=xlabel_fontsize)
     if ylabel:
         ax.set_ylabel(ylabel, fontsize=ylabel_fontsize)
+    if xlims:
+        ax.set_xlim(xlims[0], xlims[1])
+    if ylims:
+        ax.set_ylim(ylims[0], ylims[1])
 
     for spine in ['top', 'bottom', 'left', 'right']:
         ax.spines[spine].set_linewidth(spine_width)

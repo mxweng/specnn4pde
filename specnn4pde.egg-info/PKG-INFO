@@ -5,6 +5,8 @@ Summary: Solving partial differential equations using spectral methods and neura
 Home-page: https://github.com/mxweng/specnn4pde
 Author: MXWeng
 Author-email: 2431141461@qq.com
+License: UNKNOWN
+Platform: UNKNOWN
 Classifier: Development Status :: 3 - Alpha
 Classifier: License :: OSI Approved :: MIT License
 Classifier: Operating System :: OS Independent
@@ -19,13 +21,6 @@ Classifier: Topic :: Scientific/Engineering :: Mathematics
 Requires-Python: >=3.6
 Description-Content-Type: text/markdown
 License-File: LICENSE
-Requires-Dist: GPUtil
-Requires-Dist: IPython
-Requires-Dist: numpy
-Requires-Dist: pandas
-Requires-Dist: psutil
-Requires-Dist: scipy
-Requires-Dist: sympy
 
 # SpecNN4PDE
 SpecNN4PDE is an under development Python library for solving partial differential equations using spectral methods and neural networks. It consists of the following modules:
@@ -53,3 +48,4 @@ To install this library, you can use pip:
 
 ```bash
 pip install specnn4pde
+
