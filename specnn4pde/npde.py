@@ -1,10 +1,15 @@
 __all__ = ['gradients', 'Jacobian', 'partial_derivative', 'partial_derivative_vector', 
-           'meshgrid_to_matrix', 'gen_collo',
+           'meshgrid_to_matrix', 'gen_collo', 'frequency_analysis',
+           'Domain', 
            ]
 
+import numpy as np
 import torch
 from torch.autograd.functional import jacobian
 from typing import Optional, Union
+import matplotlib.pyplot as plt
+
+from .spectral import Jacobi_Gauss, Jacobi_Gauss_Lobatto
 
 
 def gradients(u, x, order=1, retain_graph=False):
@@ -238,10 +243,11 @@ def meshgrid_to_matrix(inputs, indexing='xy'):
     """
 
     Co = torch.meshgrid(*inputs, indexing=indexing)
-    return torch.cat([c.reshape(-1,1) for c in Co], dim=1)
+
+    return torch.stack(Co, dim=-1).reshape(-1, len(inputs))
 
 
-def gen_collo(Domain = [], grids = [], temporal = False, corner = True, G = None,
+def gen_collo(Domain = [], grids = [], temporal = False, corner = True, G = None, indexing = 'xy',
               dtype = torch.float32, device: Optional[Union[torch.device, str]] = 'cpu'):
     """
     Generate the collocation points for the PDE problem on regular domain.
@@ -261,6 +267,8 @@ def gen_collo(Domain = [], grids = [], temporal = False, corner = True, G = None
     G : list of tensor, optional
         The tensors in the list are the collocation points in each dimension.
         If Domain and grids are not provided, G should be provided.
+    indexing : str, optional
+        The indexing of the meshgrid. The default is 'xy'. The options are 'xy' and 'ij'.
     dtype : torch.dtype, optional
         The data type of the collocation points. The default is torch.float32.
     device : str, optional
@@ -302,7 +310,6 @@ def gen_collo(Domain = [], grids = [], temporal = False, corner = True, G = None
         dim = len(Domain[0])
         if len(grids) != dim:
             if len(grids) == 1:
-                Warning("The number of grids is set as the same for all dimensions.")
                 grids = grids * dim
             else:
                 raise ValueError("The length of grids should be equal to the dimension of the domain.")
@@ -313,8 +320,8 @@ def gen_collo(Domain = [], grids = [], temporal = False, corner = True, G = None
     if temporal:
         G_rs = [G[0][1:]] + [G[i][1:-1] for i in range(1, dim)]
         G_ic = [G[0][0]] + G[1:]
-        collo_rs = meshgrid_to_matrix(G_rs)
-        collo_ic = meshgrid_to_matrix(G_ic)
+        collo_rs = meshgrid_to_matrix(G_rs, indexing)
+        collo_ic = meshgrid_to_matrix(G_ic, indexing)
         collo_bc = []
         for i in range(1, dim):
             G_bc = [G[0]]
@@ -325,12 +332,12 @@ def gen_collo(Domain = [], grids = [], temporal = False, corner = True, G = None
                     G_bc.append(G[j][[0,-1]])
                 else:
                     G_bc.append(G[j] if corner else G[j][1:-1])
-            collo_bc.append(meshgrid_to_matrix(G_bc))
+            collo_bc.append(meshgrid_to_matrix(G_bc, indexing))
         collo_bc = torch.cat(collo_bc, dim=0)
         return collo_rs, collo_ic, collo_bc
     else:
         G_rs = [G[i][1:-1] for i in range(dim)]
-        collo_rs = meshgrid_to_matrix(G_rs)
+        collo_rs = meshgrid_to_matrix(G_rs, indexing)
         collo_bc = []
         for i in range(dim):
             G_bc = []
@@ -341,6 +348,694 @@ def gen_collo(Domain = [], grids = [], temporal = False, corner = True, G = None
                     G_bc.append(G[j][[0,-1]])
                 else:
                     G_bc.append(G[j] if corner else G[j][1:-1])
-            collo_bc.append(meshgrid_to_matrix(G_bc))
+            collo_bc.append(meshgrid_to_matrix(G_bc, indexing))
         collo_bc = torch.cat(collo_bc, dim=0)
         return collo_rs, collo_bc
+    
+
+
+def frequency_analysis(domain, func = None, x = None, Func_val = None, grid = 66, device='cpu', dtype=torch.float):
+    """
+    Compute the main frequency and its amplitude of the function on the domain.
+
+    Args:
+    -----------
+    domain (list): 
+            The domain of the function, e.g. [[0,0], [1,1]] for the unit square
+    func (callable):
+            The function to be analyzed. If None, Func_val should be provided.
+    x (tensor):
+            The input tensor of the function, If Func_val is provided, x can be ignored.
+            If Func_val is None, x will be generated automatically if it is not provided.
+    Func_val (tensor):
+            The evaluation of the function on the uniform grid of the domain.
+            If None, func should be provided.
+    grid (int):
+            The number of points in each dimension
+    device (str):
+            The device of the tensors, e.g. 'cpu' or 'cuda'
+    dtype (torch.dtype):
+            The data type of the tensors
+
+    Returns:
+    -----------
+    main_freq (tensor): 
+            The main frequency of the function
+    amplitude (tensor):
+            The amplitude of the main frequency
+    fft (tensor):
+            The Fourier transform of the function
+
+    Example:
+    -----------
+    >>> domain = [[0, 1, 2, 3], [3, 3, 4, 4]]
+    >>> freq = 2 * torch.pi * torch.tensor([1.33, 2.5, 3., 4.]).view(-1, 1)
+    >>> freq = freq.to('cuda')
+    >>> func = lambda x: 9 * torch.sin(x @ freq)
+    >>> main_freq, amplitude = frequency_analysis(domain, func = func, grid = 100, device = 'cuda')[:2]
+    >>> print("Main Frequency: ", main_freq)
+    >>> print("Amplitude: ", amplitude)
+    Main Frequency:  tensor([1.3333, 2.5000, 3.0000, 4.0000], device='cuda:0')
+    Amplitude:  tensor(8.8474, device='cuda:0')
+    """
+
+    # check the input
+    if func is None and Func_val is None:
+        raise ValueError('Either func or Func_val should be provided.')
+
+    dim = len(domain[0])
+    dom_tensor = torch.tensor(domain, device=device, dtype=dtype)
+
+    # evaluate the function
+    if Func_val is None:
+        if x is None:
+            x, _ = gen_collo(domain, [grid+2]*dim, corner = False, indexing='ij', device=device, dtype=dtype)
+        Func_val = func(x).reshape(*[grid] * dim)
+
+    # compute the Fourier transform and remove the symmetric part
+    fft = torch.fft.fftn(Func_val)
+    slices = [slice(0, n // 2) for n in fft.shape]    
+    fft = torch.abs(fft[slices]) 
+    fft = 2 * fft / (grid)**dim
+
+    # find the main frequency and its amplitude
+    main_freq = np.unravel_index(torch.argmax(fft).item(), fft.shape)
+    amplitude = fft[main_freq]
+    main_freq = torch.tensor(main_freq, device=device, dtype=dtype) / (dom_tensor[1] - dom_tensor[0])
+
+    return main_freq, amplitude, fft
+
+
+
+class Domain:
+    """
+    Domain class for the PDEs, including the domain, grids, and collocation points.
+    This class is used to generate the collocation points for the PDEs.
+
+    Remarks:
+    -----------------
+    This class only for tensor shape region, e.g. [0, 1]^d, not for the complex region.
+
+    Attributes:
+    -----------------
+    list (list): 
+            The domain of the problem, e.g. [[0,0], [1,1]] for the unit square
+    tensor (tensor):
+            The domain tensor, shape (2, dim)
+    dim (int):
+            The dimension of the problem
+    width (tensor):
+            The width of the domain, shape (dim,)
+    center (tensor):
+            The center of the domain, shape (dim,)
+    dtype (torch.dtype):
+            The data type of the tensors
+    device (str):
+            The device of the tensors, e.g. 'cpu' or 'cuda
+
+    Methods:
+    -----------------
+    gen_G(grids, type='equidistant', bndry_skip=1e-3):
+            Generate the grids for each dimension
+    int_collo(grids, type='equidistant', bndry_skip=1e-3, indexing='ij'):
+            Generate the interior collocation points
+    bndry_collo(grids, type='equidistant', corner=False, indexing='ij'):
+            Generate the boundary collocation points
+    plot_grid(grids, bndry_skip=0, indexing='ij'):
+            Generate the grids for plotting
+    show_collo(collo, s=1, figsize=None):
+            Show the collocation points
+    """
+
+    def __init__(self, domain, dtype=torch.float32, device='cpu'):
+        """
+        Initialize the domain class.
+
+        Args:
+        -----------------
+        domain (list): 
+                The domain of the problem, e.g. [[0,0], [1,1]] for the unit square
+        dtype (torch.dtype):
+                The data type of the tensors
+        device (str):
+                The device of the tensors, e.g. 'cpu' or 'cuda'        
+        """
+        
+        self.list = domain
+        self.tensor = torch.as_tensor(domain, dtype=dtype, device=device)
+
+        self.dim = len(domain[0])
+        self.width = self.tensor[1] - self.tensor[0]
+        self.center = self.tensor.mean(dim=0)
+        self.area = torch.prod(self.width)
+
+        self.dtype = dtype
+        self.device = device
+    
+    def __repr__(self):
+        return f'Domain({self.list})'
+    
+    def __check_grids__(self, grids):
+        """
+        Check the grids for the domain.
+        """
+        
+        if len(grids) != self.dim:
+            if len(grids) == 1:
+                grids = grids * self.dim
+            else:
+                raise ValueError("The length of grids should be equal to the dimension of the domain.")
+        
+        return grids
+
+    def gen_G(self, grids, type = 'equidistant', bndry_skip = 1e-3):
+        """
+        Generate the grids for each dimension.
+
+        Args:
+        -----------------
+        see method `int_collo` for the arguments
+
+        Returns:
+        -----------------
+        G (list): 
+                The grids for each dimension
+        """
+
+        if type in {'uniform', 'equidistant'}:
+            # equidistant sampling
+            G = [torch.linspace(l+bndry_skip, r-bndry_skip, n, dtype=self.dtype, device=self.device) 
+                 for l, r, n in zip(*(self.list + [grids]))]
+            
+        elif type == 'gauss':
+            # Legendre Gauss points
+            G = [(torch.as_tensor(Jacobi_Gauss(0, 0, n)[1], device=self.device, dtype=self.dtype) + 1) / 2 * (r - l) + l
+                 for l, r, n in zip(*(self.list + [grids]))]
+            
+        elif type == 'gauss_lobatto':
+            # Legendre Gauss Lobatto points
+            G = [(torch.as_tensor(Jacobi_Gauss_Lobatto(0, 0, n-1)[1], device=self.device, dtype=self.dtype) + 1) / 2 * (r - l) + l
+                 for l, r, n in zip(*(self.list + [grids]))]
+            
+        return G
+
+    def int_collo(self, grids, type = 'equidistant', bndry_skip = 1e-3, indexing = 'ij'):
+        """
+        Generate the interior collocation points.
+
+        Args:
+        -----------------
+        grids (list): 
+                The number of grids for each dimension
+        type (str):
+                The type of the grids, including the following options:
+                'uniform' or 'equidistant': equidistant sampling, boundry points included or excluded depending on `bndry_skip`.
+                'gauss': Legendre Gauss points, excluding the boundary points.
+                'gauss_lobatto': Legendre Gauss Lobatto points, including the boundary points.
+                'random': uniform distribution sampling, excluding the boundary points.
+        bndry_skip (float):
+                The boundary skip for the grids, only valid when `type` is 'uniform' or 'equidistant'.
+                If bndry_skip = 0, the boundary points are included. Otherwise, the boundary points are excluded.
+        indexing (str):
+                The indexing of the grids, 'ij' or 'xy'
+
+        Returns:
+        -----------------
+        collo (tensor): 
+                The interior collocation points, shape (N_pts, dim)
+        """
+
+        grids = self.__check_grids__(grids)
+
+        if type in {'uniform', 'equidistant', 'gauss', 'gauss_lobatto'}:
+            G = self.gen_G(grids, type, bndry_skip)
+
+        elif type == 'random':
+            # uniform distribution sampling
+            collo = torch.rand([torch.prod(torch.tensor(grids)), self.dim], dtype=self.dtype, device=self.device)
+            collo = collo * self.width + self.tensor[0]
+
+        else:
+            raise ValueError('Invalid collocation type!')
+        
+        if type != 'random':
+            Co = torch.meshgrid(*G, indexing=indexing)
+            collo = torch.stack(Co, dim=-1).reshape(-1, self.dim)
+
+        return collo
+    
+    def bndry_collo(self, grids, type='equidistant', corner=False, indexing = 'ij'):
+        """
+        Generate the boundary collocation points.
+
+        Args:
+        -----------------
+        corner (bool): 
+                Whether to include the corner points
+        see method `int_collo` for the other arguments
+
+        Returns:
+        -----------------
+        collo_bc (tensor): 
+                The boundary collocation points, shape (N_pts, dim)
+        """
+
+        grids = self.__check_grids__(grids)
+
+        if type in {'uniform', 'equidistant', 'gauss_lobatto'}:
+            G = self.gen_G(grids, type=type, bndry_skip=0)
+            
+            collo_bc = []
+            for i in range(self.dim):
+                G_bc = []
+                for j in range(self.dim):
+                    if j < i:
+                        G_bc.append(G[j][1:-1])
+                    elif j == i:
+                        G_bc.append(G[j][[0,-1]])
+                    else:
+                        G_bc.append(G[j] if corner else G[j][1:-1])
+                collo_bc.append(meshgrid_to_matrix(G_bc, indexing))
+            collo_bc = torch.cat(collo_bc, dim=0)
+        
+        elif type == 'random':
+            # TODO: random boundary collocation is under development
+            raise ValueError('Random boundary collocation is under development!')
+
+        else:
+            raise ValueError('Invalid collocation type!')
+
+        return collo_bc
+    
+    def plot_grid(self, grids, bndry_skip = 0, indexing = 'ij'):
+        """
+        Generate the equidistant grids for plotting. Only support 1D, 2D and 3D.
+
+        Args:
+        -----------------
+        see method `int_collo` for the arguments
+
+        Returns:
+        -----------------
+        grids (list): 
+                The grids for plotting
+        Co (tuple of tensor):
+                The meshgrid for plotting, shape (dim, *grids)
+        """
+
+        grids = self.__check_grids__(grids)
+
+        G = self.gen_G(grids, 'equidistant', bndry_skip)
+
+        Co = torch.meshgrid(*G, indexing=indexing)
+        collo = torch.stack(Co, dim=-1).reshape(-1, self.dim)
+
+        return collo, Co
+    
+    def rejection_sampling(self, num_samples, target_dist, M, min_batch=100, max_batch=10000, random_conadidates=False, grids=None, bndry=False):
+        """
+        Perform rejection sampling to draw samples from a target distribution.
+        
+        Parameters:
+        -----------------
+        - num_samples (int): The number of samples to generate.
+        - target_dist (callable): The target distribution function p(x). It should take a tensor of 
+                                  shape (N, dim) as input and return a tensor of shape (N,).
+        - domain (list): The rectangular domain from which to sample, as [(x_min, x_max), (y_min, y_max)].
+        - M (float): An upper bound on the target distribution within the domain.
+        - min_batch (int): The minimum batch size for sampling.
+        - max_batch (int): The maximum batch size for sampling.
+        - random_candidates (bool): Whether to sample the candidate points randomly.
+                                    When True, the candidate points will be generated from the uniform distribution strictly 
+                                    within the interior of the domain, excluding the boundary.
+        - grids (list): Only valid when `random_candidates` is False.
+                        The number of grids for each dimension, the candidate points will be generated uniformly from the grids. 
+                        If None, the grids will be set as max(1000, 2*\sqrt[dim]{num_samples}) for each dimension.
+        - bndry (bool): Only valid when `random_candidates` is False.
+                        When True, the candidate points will not be generated on the boundary.
+
+        Returns:
+        -----------------
+        - samples: Array of samples generated from the target distribution.
+        """
+
+        if grids is None:
+            grids = [max(1000, 2 * int(num_samples ** (1 / self.dim)))] * self.dim
+        grids = torch.tensor(grids, device=self.device)
+        
+        samples = torch.rand(0, self.dim, device=self.device, dtype=self.dtype)
+        
+        while samples.shape[0] < num_samples:
+            batch_size = min(max(2 * (num_samples - samples.shape[0]), min_batch), max_batch)
+
+            # Step 1: Sample candidate points from the uniform distribution over the domain
+            if random_conadidates:
+                x_candidate = torch.rand(batch_size, self.dim, device=self.device) * self.width + self.tensor[0]
+            else:
+                if bndry:
+                    x_candidate = torch.stack([torch.randint(0, g+1, (batch_size,), device=self.device) for g in grids], dim=1)
+                else:
+                    x_candidate = torch.stack([torch.randint(1, g, (num_samples,), device=self.device) for g in grids], dim=1)
+
+                x_candidate = x_candidate * self.width / grids + self.tensor[0]
+
+            # Step 2: Evaluate the target distribution at the candidate point
+            p_xy = target_dist(x_candidate).abs()
+            
+            # Step 3: Generate a uniform random number u ~ U(0, M)
+            u = torch.empty_like(p_xy).uniform_(0, M)
+            
+            # Step 4: Accept or reject the candidate sample
+            mask = (u < p_xy).squeeze()
+            # unique the samples, note that the returned samples are sorted
+            samples = torch.unique(torch.cat([samples, x_candidate[mask]], dim=0), dim=0)
+
+        random_indices = torch.randperm(samples.size(0))[:num_samples]
+        return samples[random_indices]
+
+    
+    def show_collo(self, collo, s=1, figsize=None):
+        """
+        Show the collocation points.
+
+        Args:
+        -----------------
+        collo (tensor): 
+                The collocation points, shape (N_pts, dim)
+        s (int):
+                The size of the points
+        figsize (tuple):
+                The size of the figure
+        """
+
+        if figsize is None:
+            figsize = (5, 1) if self.dim == 1 else (5, 5)
+
+        if self.dim == 1:
+            fig = plt.figure(figsize=figsize)
+            plt.scatter(collo, torch.zeros_like(collo), s=s)
+        elif self.dim == 2:
+            fig = plt.figure(figsize=figsize)
+            plt.scatter(collo[:, 0], collo[:, 1], s=s)
+        elif self.dim == 3:
+            fig = plt.figure(figsize=figsize)
+            ax = fig.add_subplot(111, projection='3d')
+            ax.scatter(collo[:, 0], collo[:, 1], collo[:, 2], s=s)
+        else:
+            raise ValueError('Only support 1D, 2D and 3D plotting!')
+        plt.show()
+
+
+
+class Domain_circle:
+    """
+    Domain class for the PDEs on the 2D circle, including the domain, grids, and collocation points.
+    """
+
+    def __init__(self, domain, dtype=torch.float32, device='cpu'):
+        """
+        Initialize the circle domain class.
+
+        Args:
+        -----------------
+        domain (list): 
+                The domain of the problem, e.g. [[0,0], [1, 2*pi]] for the unit circle
+        dtype (torch.dtype):
+                The data type of the tensors
+        device (str):
+                The device of the tensors, e.g. 'cpu' or 'cuda'        
+        """
+        
+        self.list = domain
+        self.tensor = torch.as_tensor(domain, dtype=dtype, device=device)
+
+        self.dim = len(domain[0])
+        self.width = self.tensor[1] - self.tensor[0]
+        self.center = self.tensor.mean(dim=0)
+        # self.area = torch.prod(self.width)
+        self.radius = domain[1][0]
+
+        self.dtype = dtype
+        self.device = device
+    
+    def __repr__(self):
+        return f'Domain({self.list})'
+    
+    def __check_grids__(self, grids):
+        """
+        Check the grids for the domain.
+        """
+        
+        if len(grids) != self.dim:
+            if len(grids) == 1:
+                grids = grids * self.dim
+            else:
+                raise ValueError("The length of grids should be equal to the dimension of the domain.")
+        
+        return grids
+
+    def gen_G(self, grids, type = 'equidistant', bndry_skip = 1e-3):
+        """
+        Generate the grids for each dimension.
+
+        Args:
+        -----------------
+        see method `int_collo` for the arguments
+
+        Returns:
+        -----------------
+        G (list): 
+                The grids for each dimension
+        """
+
+        if type in {'uniform', 'equidistant'}:
+            # equidistant sampling
+            G = [torch.linspace(l+bndry_skip, r-bndry_skip, n, dtype=self.dtype, device=self.device) 
+                 for l, r, n in zip(*(self.list + [grids]))]
+            
+        elif type == 'gauss':
+            # Legendre Gauss points
+            G = [(torch.as_tensor(Jacobi_Gauss(0, 0, n)[1], device=self.device, dtype=self.dtype) + 1) / 2 * (r - l) + l
+                 for l, r, n in zip(*(self.list + [grids]))]
+            
+        elif type == 'gauss_lobatto':
+            # Legendre Gauss Lobatto points
+            G = [(torch.as_tensor(Jacobi_Gauss_Lobatto(0, 0, n-1)[1], device=self.device, dtype=self.dtype) + 1) / 2 * (r - l) + l
+                 for l, r, n in zip(*(self.list + [grids]))]
+            
+        return G
+
+    def int_collo(self, grids, type = 'equidistant', bndry_skip = 1e-3, indexing = 'ij'):
+        """
+        Generate the interior collocation points.
+
+        Args:
+        -----------------
+        grids (list): 
+                The number of grids for each dimension
+        type (str):
+                The type of the grids, including the following options:
+                'uniform' or 'equidistant': equidistant sampling, boundry points included or excluded depending on `bndry_skip`.
+                'gauss': Legendre Gauss points, excluding the boundary points.
+                'gauss_lobatto': Legendre Gauss Lobatto points, including the boundary points.
+                'random': uniform distribution sampling, excluding the boundary points.
+        bndry_skip (float):
+                The boundary skip for the grids, only valid when `type` is 'uniform' or 'equidistant'.
+                If bndry_skip = 0, the boundary points are included. Otherwise, the boundary points are excluded.
+        indexing (str):
+                The indexing of the grids, 'ij' or 'xy'
+
+        Returns:
+        -----------------
+        collo (tensor): 
+                The interior collocation points, shape (N_pts, dim)
+        """
+
+        grids = self.__check_grids__(grids)
+
+        if type in {'uniform', 'equidistant', 'gauss', 'gauss_lobatto'}:
+            G = self.gen_G(grids, type, bndry_skip)
+
+        elif type == 'random':
+            # uniform distribution sampling
+            num_samples = torch.prod(torch.tensor(grids))
+            collo = self.rejection_sampling(num_samples, self.is_within_domain, 1, random_candidates=True)                
+
+        else:
+            raise ValueError('Invalid collocation type!')
+        
+        if type != 'random':
+            Co = torch.meshgrid(*G, indexing=indexing)
+            # transform the polar coordinates to Cartesian coordinates
+            Co_Cartesian = (Co[0] * torch.cos(Co[1]), Co[0] * torch.sin(Co[1]))
+            collo = torch.stack(Co_Cartesian, dim=-1).reshape(-1, self.dim)
+
+        return collo
+    
+    
+    def bndry_collo(self, grids, type='equidistant', corner=False, indexing = 'ij'):
+        """
+        Generate the boundary collocation points.
+
+        Args:
+        -----------------
+        grids (int):
+                The number of grids
+        corner (bool): 
+                Whether to include the corner points
+        see method `int_collo` for the other arguments
+
+        Returns:
+        -----------------
+        collo_bc (tensor): 
+                The boundary collocation points, shape (N_pts, dim)
+        """
+
+        if type in {'uniform', 'equidistant'}:
+            theta = torch.linspace(self.list[0][1], self.list[1][1], grids + 1, dtype=self.dtype, device=self.device)[:-1]
+        
+        elif type == 'random':
+            # TODO: random boundary collocation is under development
+            raise ValueError('Random boundary collocation is under development!')
+
+        else:
+            raise ValueError('Invalid collocation type!')
+        
+        collo_bc = self.radius * torch.stack((torch.cos(theta), torch.sin(theta)), dim=1)
+        return collo_bc
+    
+    def plot_grid(self, grids, bndry_skip = 0, indexing = 'ij'):
+        """
+        Generate the equidistant grids for plotting. Only support 1D, 2D and 3D.
+
+        Args:
+        -----------------
+        see method `int_collo` for the arguments
+
+        Returns:
+        -----------------
+        grids (list): 
+                The grids for plotting
+        Co (tuple of tensor):
+                The meshgrid for plotting, shape (dim, *grids)
+        """
+
+        grids = self.__check_grids__(grids)
+
+        G = self.gen_G(grids, 'equidistant', bndry_skip)
+
+        Co = torch.meshgrid(*G, indexing=indexing)
+        # transform the polar coordinates to Cartesian coordinates
+        Co_Cartesian = (Co[0] * torch.cos(Co[1]), Co[0] * torch.sin(Co[1]))
+        collo = torch.stack(Co_Cartesian, dim=-1).reshape(-1, self.dim)
+
+        return collo, Co_Cartesian, Co
+    
+    def is_within_domain(self, x):
+        """
+        Check if the input samples are within the domain.
+
+        Args:
+        -----------------
+        x (tensor): Input samples, shape (N_pts, dim)
+
+        Returns:
+        -----------------
+        result (tensor): Shape (N_pts, 1), values are 1 if within the domain, otherwise 0
+        """
+
+        r = x.norm(dim=1, keepdim=True)
+        result = (r > 0) & (r < self.radius)
+        
+        return result.float()
+    
+    def rejection_sampling(self, num_samples, target_dist, M, min_batch=100, max_batch=10000, random_candidates=False, grids=None, bndry=False):
+        """
+        Perform rejection sampling to draw samples from a target distribution.
+        
+        Parameters:
+        -----------------
+        - num_samples (int): The number of samples to generate.
+        - target_dist (callable): The target distribution function p(x). It should take a tensor of 
+                                  shape (N, dim) as input and return a tensor of shape (N,).
+        - domain (list): The rectangular domain from which to sample, as [(x_min, x_max), (y_min, y_max)].
+        - M (float): An upper bound on the target distribution within the domain.
+        - min_batch (int): The minimum batch size for sampling.
+        - max_batch (int): The maximum batch size for sampling.
+        - random_candidates (bool): Whether to sample the candidate points randomly.
+                                    When True, the candidate points will be generated from the uniform distribution strictly 
+                                    within the interior of the domain, excluding the boundary.
+        - grids (list): Only valid when `random_candidates` is False.
+                        The number of grids for each dimension, the candidate points will be generated uniformly from the grids. 
+                        If None, the grids will be set as max(1000, 2*\sqrt[dim]{num_samples}) for each dimension.
+        - bndry (bool): Only valid when `random_candidates` is False.
+                        When True, the candidate points will not be generated on the boundary.
+
+        Returns:
+        -----------------
+        - samples: Array of samples generated from the target distribution.
+        """
+
+        if grids is None:
+            grids = [max(1000, 2 * int(num_samples ** (1 / self.dim)))] * self.dim
+        grids = torch.tensor(grids, device=self.device)
+        
+        samples = torch.rand(0, self.dim, device=self.device, dtype=self.dtype)
+        
+        while samples.shape[0] < num_samples:
+            batch_size = min(max(2 * (num_samples - samples.shape[0]), min_batch), max_batch)
+
+            # Step 1: Sample candidate points from the uniform distribution over the domain
+            if random_candidates:
+                x_candidate = (torch.rand(batch_size, self.dim, device=self.device) * 2 - 1) * self.radius
+            else:
+                if bndry:
+                    x_candidate = torch.stack([torch.randint(0, g+1, (batch_size,), device=self.device) for g in grids], dim=1)
+                else:
+                    x_candidate = torch.stack([torch.randint(1, g, (num_samples,), device=self.device) for g in grids], dim=1)
+
+                x_candidate = (x_candidate / grids * 2 - 1) * self.radius
+
+            # Step 2: Evaluate the target distribution at the candidate point
+            # and check if the candidate points are within the domain
+            p_xy = target_dist(x_candidate).abs() * self.is_within_domain(x_candidate)
+            
+            # Step 3: Generate a uniform random number u ~ U(0, M)
+            u = torch.empty_like(p_xy).uniform_(0, M)
+            
+            # Step 4: Accept or reject the candidate sample
+            mask = (u < p_xy).squeeze()
+            # unique the samples, note that the returned samples are sorted
+            samples = torch.unique(torch.cat([samples, x_candidate[mask]], dim=0), dim=0)
+
+        random_indices = torch.randperm(samples.size(0))[:num_samples]
+        return samples[random_indices]
+
+    
+    def show_collo(self, collo, s=1, figsize=None):
+        """
+        Show the collocation points.
+
+        Args:
+        -----------------
+        collo (tensor): 
+                The collocation points, shape (N_pts, dim)
+        s (int):
+                The size of the points
+        figsize (tuple):
+                The size of the figure
+        """
+
+        if figsize is None:
+            figsize = (5, 1) if self.dim == 1 else (5, 5)
+
+        if self.dim == 2:
+            fig = plt.figure(figsize=figsize)
+            plt.scatter(collo[:, 0], collo[:, 1], s=s)
+        # elif self.dim == 3:
+        #     fig = plt.figure(figsize=figsize)
+        #     ax = fig.add_subplot(111, projection='3d')
+        #     ax.scatter(collo[:, 0], collo[:, 1], collo[:, 2], s=s)
+        else:
+            raise ValueError('Only support 2D plotting!')
+        plt.show()

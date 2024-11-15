@@ -1,4 +1,4 @@
-__all__ = ['setup_seed', 'seed_worker',
+__all__ = ['setup_seed', 'seed_worker', 'check_gpu_memory',
               'RFMNet',
            ]
 
@@ -68,6 +68,25 @@ def seed_worker(worker_id):
     np.random.seed(worker_seed)
     random.seed(worker_seed)
 
+def check_gpu_memory():
+    """
+    Check the GPU memory usage.
+    """
+
+    if not torch.cuda.is_available():
+        print("No GPU available.")
+        return
+
+    num_gpus = torch.cuda.device_count()
+    for i in range(num_gpus):
+        gpu_name = torch.cuda.get_device_name(i)
+        total_memory = torch.cuda.get_device_properties(i).total_memory / (1024 ** 3)  # Convert to GB
+        reserved_memory = torch.cuda.memory_reserved(i) / (1024 ** 3)  # Convert to GB
+        allocated_memory = torch.cuda.memory_allocated(i) / (1024 ** 3)  # Convert to GB
+        free_memory = reserved_memory - allocated_memory  # Convert to GB
+
+        print(f"GPU {i}: {gpu_name}")
+        print(f"Total Memory: {total_memory:.2f} GB; Reserved Memory: {reserved_memory:.2f} GB; Allocated Memory: {allocated_memory:.2f} GB; Free Memory: {free_memory:.2f} GB.")
 
 
 class RFMNet(nn.Module):
