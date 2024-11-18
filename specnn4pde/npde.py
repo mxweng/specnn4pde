@@ -652,7 +652,7 @@ class Domain:
 
         return collo, Co
     
-    def rejection_sampling(self, num_samples, target_dist, M, min_batch=100, max_batch=10000, random_conadidates=False, grids=None, bndry=False):
+    def rejection_sampling(self, num_samples, target_dist, M, min_batch=100, max_batch=10000, random_candidates=False, grids=None, bndry=False):
         """
         Perform rejection sampling to draw samples from a target distribution.
         
@@ -689,7 +689,7 @@ class Domain:
             batch_size = min(max(2 * (num_samples - samples.shape[0]), min_batch), max_batch)
 
             # Step 1: Sample candidate points from the uniform distribution over the domain
-            if random_conadidates:
+            if random_candidates:
                 x_candidate = torch.rand(batch_size, self.dim, device=self.device) * self.width + self.tensor[0]
             else:
                 if bndry:
@@ -931,6 +931,7 @@ class Domain_circle:
 
         return collo, Co_Cartesian, Co
     
+    # TODO: to be implemented in subclass
     def is_within_domain(self, x):
         """
         Check if the input samples are within the domain.
@@ -945,7 +946,7 @@ class Domain_circle:
         """
 
         r = x.norm(dim=1, keepdim=True)
-        result = (r > 0) & (r < self.radius)
+        result = (r > 1e-4) & (r < self.radius)
         
         return result.float()
     
@@ -987,12 +988,12 @@ class Domain_circle:
 
             # Step 1: Sample candidate points from the uniform distribution over the domain
             if random_candidates:
-                x_candidate = (torch.rand(batch_size, self.dim, device=self.device) * 2 - 1) * self.radius
+                x_candidate = (torch.rand(batch_size, self.dim, device=self.device, dtype=self.dtype) * 2 - 1) * self.radius
             else:
                 if bndry:
-                    x_candidate = torch.stack([torch.randint(0, g+1, (batch_size,), device=self.device) for g in grids], dim=1)
+                    x_candidate = torch.stack([torch.randint(0, g+1, (batch_size,), device=self.device, dtype=self.dtype) for g in grids], dim=1)
                 else:
-                    x_candidate = torch.stack([torch.randint(1, g, (num_samples,), device=self.device) for g in grids], dim=1)
+                    x_candidate = torch.stack([torch.randint(1, g, (num_samples,), device=self.device, dtype=self.dtype) for g in grids], dim=1)
 
                 x_candidate = (x_candidate / grids * 2 - 1) * self.radius
 
@@ -1032,6 +1033,8 @@ class Domain_circle:
         if self.dim == 2:
             fig = plt.figure(figsize=figsize)
             plt.scatter(collo[:, 0], collo[:, 1], s=s)
+            plt.xlim(-self.radius*1.05, self.radius*1.05)
+            plt.ylim(-self.radius*1.05, self.radius*1.05)
         # elif self.dim == 3:
         #     fig = plt.figure(figsize=figsize)
         #     ax = fig.add_subplot(111, projection='3d')
