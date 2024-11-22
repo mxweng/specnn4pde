@@ -358,7 +358,7 @@ def frequency_analysis(domain, func = None, x = None, Func_val = None, grid = 66
     """
     Compute the main frequency and its amplitude of the function on the domain.
 
-    Args:
+    Args
     -----------
     domain (list): 
             The domain of the function, e.g. [[0,0], [1,1]] for the unit square
@@ -377,7 +377,7 @@ def frequency_analysis(domain, func = None, x = None, Func_val = None, grid = 66
     dtype (torch.dtype):
             The data type of the tensors
 
-    Returns:
+    Returns
     -----------
     main_freq (tensor): 
             The main frequency of the function
@@ -386,7 +386,7 @@ def frequency_analysis(domain, func = None, x = None, Func_val = None, grid = 66
     fft (tensor):
             The Fourier transform of the function
 
-    Example:
+    Example
     -----------
     >>> domain = [[0, 1, 2, 3], [3, 3, 4, 4]]
     >>> freq = 2 * torch.pi * torch.tensor([1.33, 2.5, 3., 4.]).view(-1, 1)
@@ -429,32 +429,46 @@ def frequency_analysis(domain, func = None, x = None, Func_val = None, grid = 66
 
 class Domain:
     """
-    Domain class for the PDEs, including the domain, grids, and collocation points.
-    This class is used to generate the collocation points for the PDEs.
+    Generate the domain, grids, and collocation points for the PDE problem.
 
-    Remarks:
+    Remarks
     -----------------
-    This class only for tensor shape region, e.g. [0, 1]^d, not for the complex region.
+    For the complex region, the following methods should be implemented in the subclass:
+        is_inside(x, strict=True):
+                Check if the point x is inside the domain.
+                Should return a tensor of bool, shape (x.shape[0], 1)
+        bndry_collo(grids, type='equidistant', corner=False, indexing='ij'):
+                Generate the boundary collocation points
+        clip(ax, img):
+                Covering or clipping the image.
 
-    Attributes:
+    Attributes
     -----------------
     list (list): 
             The domain of the problem, e.g. [[0,0], [1,1]] for the unit square
     tensor (tensor):
             The domain tensor, shape (2, dim)
+    complex (bool):
+            Whether the domain is a complex region
     dim (int):
             The dimension of the problem
     width (tensor):
             The width of the domain, shape (dim,)
     center (tensor):
             The center of the domain, shape (dim,)
+    area (tensor or float):
+            The area of the domain, for complex region, it should be given manually
     dtype (torch.dtype):
             The data type of the tensors
     device (str):
             The device of the tensors, e.g. 'cpu' or 'cuda
 
-    Methods:
+    Methods
     -----------------
+    is_inside(x, strict=True):
+            Check if the point x is inside the domain.
+    clip(ax, img):
+            Covering or clipping the image.
     gen_G(grids, type='equidistant', bndry_skip=1e-3):
             Generate the grids for each dimension
     int_collo(grids, type='equidistant', bndry_skip=1e-3, indexing='ij'):
@@ -467,14 +481,19 @@ class Domain:
             Show the collocation points
     """
 
-    def __init__(self, domain, dtype=torch.float32, device='cpu'):
+    def __init__(self, domain, complex=False, area=None, dtype=torch.float32, device='cpu'):
         """
         Initialize the domain class.
 
-        Args:
+        Args
         -----------------
         domain (list): 
                 The domain of the problem, e.g. [[0,0], [1,1]] for the unit square
+                For complex region, it should be the clousure of the domain
+        complex (bool):
+                Whether the domain is a complex region
+        area (tensor or float):
+            The area of the domain, for complex region, it should be given manually
         dtype (torch.dtype):
                 The data type of the tensors
         device (str):
@@ -483,11 +502,18 @@ class Domain:
         
         self.list = domain
         self.tensor = torch.as_tensor(domain, dtype=dtype, device=device)
+        self.complex = complex
 
         self.dim = len(domain[0])
         self.width = self.tensor[1] - self.tensor[0]
         self.center = self.tensor.mean(dim=0)
-        self.area = torch.prod(self.width)
+
+        if complex:
+            if area is None:
+                raise ValueError('The area should be provided for the complex region.')
+            self.area = area
+        else:
+            self.area = torch.prod(self.width)
 
         self.dtype = dtype
         self.device = device
@@ -507,16 +533,64 @@ class Domain:
                 raise ValueError("The length of grids should be equal to the dimension of the domain.")
         
         return grids
+    
+    def is_inside(self, x, strict=True):
+        """
+        Check if the point x is inside the domain for complex region.
+        Need to be implemented in the subclass for different regions.
+
+        Args
+        -----------------
+        x (tensor): 
+                The point to be checked, shape (N_pts, dim)
+        strict (bool):
+                Whether to exclude the boundary points.
+
+        Returns
+        -----------------
+        inside (tensor of bool): 
+                Whether the point is inside the domain, shape (N_pts, 1)
+        """
+
+        return torch.ones(x.shape[0], 1, dtype=torch.bool, device=self.device)
+    
+    def clip(self, ax, img):
+        """
+        Covering or clipping the image.
+        To be implemented in the subclass.
+
+        Args
+        ----------------
+        ax (Axes):
+                The axes to plot the image
+        img (AxesImage):
+                The image to be clipped
+
+        Sample codes
+        ----------------
+        >>> # 1. Covering
+        >>> # Fill the area enclosed by the circle with white color
+        >>> t = np.linspace(0, 2 * np.pi, 100)
+        >>> ax.fill(np.cos(t), np.sin(t), 'w')
+
+        >>> # 2. Clipping
+        >>> # Clip the image with a polygon
+        >>> verts = np.array([[0.,0],[0,-1],[1,-1],[1,1],[-1,1],[-1,0]])
+        >>> polygon = Polygon(verts, closed=True, color='none', alpha=0.5)
+        >>> ax.add_patch(polygon)
+        >>> img.set_clip_path(polygon)
+        """
+        pass
 
     def gen_G(self, grids, type = 'equidistant', bndry_skip = 1e-3):
         """
         Generate the grids for each dimension.
 
-        Args:
+        Args
         -----------------
         see method `int_collo` for the arguments
 
-        Returns:
+        Returns
         -----------------
         G (list): 
                 The grids for each dimension
@@ -543,7 +617,7 @@ class Domain:
         """
         Generate the interior collocation points.
 
-        Args:
+        Args
         -----------------
         grids (list): 
                 The number of grids for each dimension
@@ -559,10 +633,11 @@ class Domain:
         indexing (str):
                 The indexing of the grids, 'ij' or 'xy'
 
-        Returns:
+        Returns
         -----------------
         collo (tensor): 
                 The interior collocation points, shape (N_pts, dim)
+                For complex regions, points outside the domain are filtered out, so the number of points returned is uncertain, except for the `random` type.
         """
 
         grids = self.__check_grids__(grids)
@@ -572,8 +647,9 @@ class Domain:
 
         elif type == 'random':
             # uniform distribution sampling
-            collo = torch.rand([torch.prod(torch.tensor(grids)), self.dim], dtype=self.dtype, device=self.device)
-            collo = collo * self.width + self.tensor[0]
+            # collo = torch.rand([torch.prod(torch.tensor(grids)), self.dim], dtype=self.dtype, device=self.device)
+            # collo = collo * self.width + self.tensor[0]
+            collo = self.rejection_sampling(torch.prod(torch.tensor(grids)), self.is_inside, 1, random_candidates=True)
 
         else:
             raise ValueError('Invalid collocation type!')
@@ -582,19 +658,24 @@ class Domain:
             Co = torch.meshgrid(*G, indexing=indexing)
             collo = torch.stack(Co, dim=-1).reshape(-1, self.dim)
 
+            # filter the points outside the domain
+            if self.complex:
+                mask = self.is_inside(collo)
+                collo = collo[mask.squeeze()]
+
         return collo
     
     def bndry_collo(self, grids, type='equidistant', corner=False, indexing = 'ij'):
         """
         Generate the boundary collocation points.
 
-        Args:
+        Args
         -----------------
         corner (bool): 
                 Whether to include the corner points
         see method `int_collo` for the other arguments
 
-        Returns:
+        Returns
         -----------------
         collo_bc (tensor): 
                 The boundary collocation points, shape (N_pts, dim)
@@ -631,11 +712,11 @@ class Domain:
         """
         Generate the equidistant grids for plotting. Only support 1D, 2D and 3D.
 
-        Args:
+        Args
         -----------------
-        see method `int_collo` for the arguments
+        see method `int_collo` for other arguments
 
-        Returns:
+        Returns
         -----------------
         grids (list): 
                 The grids for plotting
@@ -645,7 +726,8 @@ class Domain:
 
         grids = self.__check_grids__(grids)
 
-        G = self.gen_G(grids, 'equidistant', bndry_skip)
+        G = [torch.linspace(l+bndry_skip, r-bndry_skip, n, dtype=self.dtype, device=self.device) 
+                 for l, r, n in zip(*(self.list + [grids]))]
 
         Co = torch.meshgrid(*G, indexing=indexing)
         collo = torch.stack(Co, dim=-1).reshape(-1, self.dim)
@@ -656,25 +738,26 @@ class Domain:
         """
         Perform rejection sampling to draw samples from a target distribution.
         
-        Parameters:
+        Parameters
         -----------------
         - num_samples (int): The number of samples to generate.
         - target_dist (callable): The target distribution function p(x). It should take a tensor of 
-                                  shape (N, dim) as input and return a tensor of shape (N,).
+                                  shape (N, dim) as input and return a tensor of shape (N, 1).
         - domain (list): The rectangular domain from which to sample, as [(x_min, x_max), (y_min, y_max)].
         - M (float): An upper bound on the target distribution within the domain.
         - min_batch (int): The minimum batch size for sampling.
         - max_batch (int): The maximum batch size for sampling.
         - random_candidates (bool): Whether to sample the candidate points randomly.
-                                    When True, the candidate points will be generated from the uniform distribution strictly 
-                                    within the interior of the domain, excluding the boundary.
+                                    If True, the candidate points will be generated from the uniform distribution strictly 
+                                    within the interior of the domain, excluding the boundary. 
+                                    If False, see the following two arguments.
         - grids (list): Only valid when `random_candidates` is False.
                         The number of grids for each dimension, the candidate points will be generated uniformly from the grids. 
                         If None, the grids will be set as max(1000, 2*\sqrt[dim]{num_samples}) for each dimension.
         - bndry (bool): Only valid when `random_candidates` is False.
                         When True, the candidate points will not be generated on the boundary.
 
-        Returns:
+        Returns
         -----------------
         - samples: Array of samples generated from the target distribution.
         """
@@ -700,7 +783,11 @@ class Domain:
                 x_candidate = x_candidate * self.width / grids + self.tensor[0]
 
             # Step 2: Evaluate the target distribution at the candidate point
-            p_xy = target_dist(x_candidate).abs()
+            p_xy = abs(target_dist(x_candidate).to(self.dtype))
+            # filter the points outside the domain
+            if self.complex:
+                mask = self.is_inside(x_candidate)
+                p_xy = p_xy * mask
             
             # Step 3: Generate a uniform random number u ~ U(0, M)
             u = torch.empty_like(p_xy).uniform_(0, M)
@@ -718,7 +805,7 @@ class Domain:
         """
         Show the collocation points.
 
-        Args:
+        Args
         -----------------
         collo (tensor): 
                 The collocation points, shape (N_pts, dim)
@@ -749,17 +836,73 @@ class Domain:
 
 class Domain_circle:
     """
-    Domain class for the PDEs on the 2D circle, including the domain, grids, and collocation points.
+    Generate the domain, grids, and collocation points for circle domain.
+
+    Remarks
+    -----------------
+    For the complex region, the following methods should be implemented in the subclass:
+        is_inside(x, strict=True):
+                Check if the point x is inside the domain.
+                Should return a tensor of bool, shape (x.shape[0], 1)
+        bndry_collo(grids, type='equidistant', corner=False, indexing='ij'):
+                Generate the boundary collocation points
+        clip(ax, img):
+                Covering or clipping the image.
+
+    Attributes
+    -----------------
+    list (list): 
+            The domain of the problem in polar coordinates,
+            e.g. [[0,0], [1,2*pi]] for the unit circle
+    tensor (tensor):
+            The domain tensor, shape (2, dim)
+    complex (bool):
+            Whether the domain is a complex region
+    dim (int):
+            The dimension of the problem
+    center (tensor):
+            The center of the domain, shape (dim,)
+    radius (float):
+            The radius of the circle
+    area (tensor or float):
+            The area of the domain, for complex region, it should be given manually
+    dtype (torch.dtype):
+            The data type of the tensors
+    device (str):
+            The device of the tensors, e.g. 'cpu' or 'cuda
+
+    Methods
+    -----------------
+    is_inside(x, strict=True):
+            Check if the point x is inside the domain.
+    clip(ax, img):
+            Covering or clipping the image.
+    gen_G(grids, type='equidistant', bndry_skip=1e-3):
+            Generate the grids for each dimension
+    int_collo(grids, type='equidistant', bndry_skip=1e-3, indexing='ij'):
+            Generate the interior collocation points
+    bndry_collo(grids, type='equidistant', corner=False, indexing='ij'):
+            Generate the boundary collocation points
+    plot_grid(grids, bndry_skip=0, indexing='ij'):
+            Generate the grids for plotting
+    show_collo(collo, s=1, figsize=None):
+            Show the collocation points
     """
 
-    def __init__(self, domain, dtype=torch.float32, device='cpu'):
+    def __init__(self, domain, complex=False, area=None, center=(0,0), dtype=torch.float32, device='cpu'):
         """
         Initialize the circle domain class.
 
-        Args:
+        Args
         -----------------
         domain (list): 
                 The domain of the problem, e.g. [[0,0], [1, 2*pi]] for the unit circle
+        complex (bool):
+                Whether the domain is a complex region
+        area (float or float):
+                The area of the domain, for complex region, it should be given manually
+        center (tuple):
+                The center of the circle
         dtype (torch.dtype):
                 The data type of the tensors
         device (str):
@@ -768,12 +911,18 @@ class Domain_circle:
         
         self.list = domain
         self.tensor = torch.as_tensor(domain, dtype=dtype, device=device)
+        self.complex = complex
 
         self.dim = len(domain[0])
-        self.width = self.tensor[1] - self.tensor[0]
-        self.center = self.tensor.mean(dim=0)
-        # self.area = torch.prod(self.width)
+        self.center = torch.tensor(center, dtype=dtype, device=device)
         self.radius = domain[1][0]
+
+        if complex:
+            if area is None:
+                raise ValueError('The area should be provided for the complex region.')
+            self.area = area
+        else:
+            self.area = self.area = np.pi * self.radius ** 2
 
         self.dtype = dtype
         self.device = device
@@ -793,16 +942,62 @@ class Domain_circle:
                 raise ValueError("The length of grids should be equal to the dimension of the domain.")
         
         return grids
+    
+    def is_inside(self, x, strict=True):
+        """
+        Check if the input samples are within the domain.
+
+        Args
+        -----------------
+        x (tensor): Input samples, shape (N_pts, dim)
+        strict (bool): Whether to exclude the boundary
+
+        Returns
+        -----------------
+        result (tensor): Shape (N_pts, 1), values are 1 if within the domain, otherwise 0
+        """
+
+        r = x.norm(dim=1, keepdim=True)
+        return (r < self.radius) if strict else (r <= self.radius)
+    
+    def clip(self, ax, img):
+        """
+        Covering or clipping the image.
+        To be implemented in the subclass.
+
+        Args
+        ----------------
+        ax (Axes):
+                The axes to plot the image
+        img (AxesImage):
+                The image to be clipped
+
+        Sample codes
+        ----------------
+        >>> # 1. Covering
+        >>> # Fill the area enclosed by the circle with white color
+        >>> t = np.linspace(0, 2 * np.pi, 100)
+        >>> ax.fill(np.cos(t), np.sin(t), 'w')
+
+        >>> # 2. Clipping
+        >>> # Clip the image with a polygon
+        >>> verts = np.array([[0.,0],[0,-1],[1,-1],[1,1],[-1,1],[-1,0]])
+        >>> polygon = Polygon(verts, closed=True, color='none', alpha=0.5)
+        >>> ax.add_patch(polygon)
+        >>> img.set_clip_path(polygon)
+        """
+        pass
 
     def gen_G(self, grids, type = 'equidistant', bndry_skip = 1e-3):
         """
         Generate the grids for each dimension.
+        In radial direction, the point 0 are excluded, even if `bndry_skip` is 0.
 
-        Args:
+        Args
         -----------------
         see method `int_collo` for the arguments
 
-        Returns:
+        Returns
         -----------------
         G (list): 
                 The grids for each dimension
@@ -810,7 +1005,13 @@ class Domain_circle:
 
         if type in {'uniform', 'equidistant'}:
             # equidistant sampling
-            G = [torch.linspace(l+bndry_skip, r-bndry_skip, n, dtype=self.dtype, device=self.device) 
+            if bndry_skip == 0:
+                G = [torch.linspace(l+bndry_skip, r-bndry_skip, n+1, dtype=self.dtype, device=self.device) 
+                 for l, r, n in zip(*(self.list + [grids]))]
+                G[0] = G[0][1:]     # exclude the origin point (0,0)
+                G[1] = G[1][:-1]    # exclude the boundary point 2*pi, which is the same as 0
+            else:
+                G = [torch.linspace(l+bndry_skip, r-bndry_skip, n, dtype=self.dtype, device=self.device) 
                  for l, r, n in zip(*(self.list + [grids]))]
             
         elif type == 'gauss':
@@ -820,8 +1021,10 @@ class Domain_circle:
             
         elif type == 'gauss_lobatto':
             # Legendre Gauss Lobatto points
-            G = [(torch.as_tensor(Jacobi_Gauss_Lobatto(0, 0, n-1)[1], device=self.device, dtype=self.dtype) + 1) / 2 * (r - l) + l
+            G = [(torch.as_tensor(Jacobi_Gauss_Lobatto(0, 0, n)[1], device=self.device, dtype=self.dtype) + 1) / 2 * (r - l) + l
                  for l, r, n in zip(*(self.list + [grids]))]
+            G[0] = G[0][1:]     # exclude the origin point (0,0)
+            G[1] = G[1][:-1]    # exclude the boundary point 2*pi, which is the same as 0
             
         return G
 
@@ -829,15 +1032,17 @@ class Domain_circle:
         """
         Generate the interior collocation points.
 
-        Args:
+        Args
         -----------------
         grids (list): 
                 The number of grids for each dimension
         type (str):
                 The type of the grids, including the following options:
                 'uniform' or 'equidistant': equidistant sampling, boundry points included or excluded depending on `bndry_skip`.
+                                            note that the origin point (0,0) is excluded anyway
                 'gauss': Legendre Gauss points, excluding the boundary points.
                 'gauss_lobatto': Legendre Gauss Lobatto points, including the boundary points.
+                !!!!!!!!!! the above three are distributions in (r, theta) coordinates
                 'random': uniform distribution sampling, excluding the boundary points.
         bndry_skip (float):
                 The boundary skip for the grids, only valid when `type` is 'uniform' or 'equidistant'.
@@ -845,10 +1050,11 @@ class Domain_circle:
         indexing (str):
                 The indexing of the grids, 'ij' or 'xy'
 
-        Returns:
+        Returns
         -----------------
         collo (tensor): 
                 The interior collocation points, shape (N_pts, dim)
+                For complex regions, points outside the domain are filtered out, so the number of points returned is uncertain, except for the `random` type.
         """
 
         grids = self.__check_grids__(grids)
@@ -859,7 +1065,7 @@ class Domain_circle:
         elif type == 'random':
             # uniform distribution sampling
             num_samples = torch.prod(torch.tensor(grids))
-            collo = self.rejection_sampling(num_samples, self.is_within_domain, 1, random_candidates=True)                
+            collo = self.rejection_sampling(num_samples, self.is_inside, 1, random_candidates=True)                
 
         else:
             raise ValueError('Invalid collocation type!')
@@ -870,22 +1076,25 @@ class Domain_circle:
             Co_Cartesian = (Co[0] * torch.cos(Co[1]), Co[0] * torch.sin(Co[1]))
             collo = torch.stack(Co_Cartesian, dim=-1).reshape(-1, self.dim)
 
+            # filter the points outside the domain
+            if self.complex:
+                mask = self.is_inside(collo)
+                collo = collo[mask.squeeze()]
+
         return collo
     
     
-    def bndry_collo(self, grids, type='equidistant', corner=False, indexing = 'ij'):
+    def bndry_collo(self, grids, type='equidistant', **kwargs):
         """
         Generate the boundary collocation points.
 
-        Args:
+        Args
         -----------------
         grids (int):
                 The number of grids
-        corner (bool): 
-                Whether to include the corner points
         see method `int_collo` for the other arguments
 
-        Returns:
+        Returns
         -----------------
         collo_bc (tensor): 
                 The boundary collocation points, shape (N_pts, dim)
@@ -908,21 +1117,24 @@ class Domain_circle:
         """
         Generate the equidistant grids for plotting. Only support 1D, 2D and 3D.
 
-        Args:
+        Args
         -----------------
         see method `int_collo` for the arguments
 
-        Returns:
+        Returns
         -----------------
         grids (list): 
                 The grids for plotting
+        Co_Cartesian (tensor):
+                The meshgrid points in Cartesian coordinates, shape (dim, *grids)
         Co (tuple of tensor):
-                The meshgrid for plotting, shape (dim, *grids)
+                The meshgrid points in polar coordinates, shape (dim, *grids)
         """
 
         grids = self.__check_grids__(grids)
 
-        G = self.gen_G(grids, 'equidistant', bndry_skip)
+        G = [torch.linspace(l+bndry_skip, r-bndry_skip, n, dtype=self.dtype, device=self.device) 
+                 for l, r, n in zip(*(self.list + [grids]))]
 
         Co = torch.meshgrid(*G, indexing=indexing)
         # transform the polar coordinates to Cartesian coordinates
@@ -931,30 +1143,13 @@ class Domain_circle:
 
         return collo, Co_Cartesian, Co
     
-    # TODO: to be implemented in subclass
-    def is_within_domain(self, x):
-        """
-        Check if the input samples are within the domain.
 
-        Args:
-        -----------------
-        x (tensor): Input samples, shape (N_pts, dim)
-
-        Returns:
-        -----------------
-        result (tensor): Shape (N_pts, 1), values are 1 if within the domain, otherwise 0
-        """
-
-        r = x.norm(dim=1, keepdim=True)
-        result = (r > 1e-4) & (r < self.radius)
-        
-        return result.float()
     
     def rejection_sampling(self, num_samples, target_dist, M, min_batch=100, max_batch=10000, random_candidates=False, grids=None, bndry=False):
         """
         Perform rejection sampling to draw samples from a target distribution.
         
-        Parameters:
+        Parameters
         -----------------
         - num_samples (int): The number of samples to generate.
         - target_dist (callable): The target distribution function p(x). It should take a tensor of 
@@ -964,15 +1159,16 @@ class Domain_circle:
         - min_batch (int): The minimum batch size for sampling.
         - max_batch (int): The maximum batch size for sampling.
         - random_candidates (bool): Whether to sample the candidate points randomly.
-                                    When True, the candidate points will be generated from the uniform distribution strictly 
-                                    within the interior of the domain, excluding the boundary.
+                                    If True, the candidate points will be generated from the uniform distribution strictly 
+                                    within the interior of the domain, excluding the boundary. 
+                                    If False, see the following two arguments.
         - grids (list): Only valid when `random_candidates` is False.
                         The number of grids for each dimension, the candidate points will be generated uniformly from the grids. 
                         If None, the grids will be set as max(1000, 2*\sqrt[dim]{num_samples}) for each dimension.
         - bndry (bool): Only valid when `random_candidates` is False.
                         When True, the candidate points will not be generated on the boundary.
 
-        Returns:
+        Returns
         -----------------
         - samples: Array of samples generated from the target distribution.
         """
@@ -999,8 +1195,12 @@ class Domain_circle:
 
             # Step 2: Evaluate the target distribution at the candidate point
             # and check if the candidate points are within the domain
-            p_xy = target_dist(x_candidate).abs() * self.is_within_domain(x_candidate)
-            
+            p_xy = abs(target_dist(x_candidate).to(self.dtype))
+            # filter the points outside the domain
+            if self.complex:
+                mask = self.is_inside(x_candidate)
+                p_xy = p_xy * mask
+
             # Step 3: Generate a uniform random number u ~ U(0, M)
             u = torch.empty_like(p_xy).uniform_(0, M)
             
@@ -1017,7 +1217,7 @@ class Domain_circle:
         """
         Show the collocation points.
 
-        Args:
+        Args
         -----------------
         collo (tensor): 
                 The collocation points, shape (N_pts, dim)
