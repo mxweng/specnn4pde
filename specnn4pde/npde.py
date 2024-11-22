@@ -1,6 +1,6 @@
 __all__ = ['gradients', 'Jacobian', 'partial_derivative', 'partial_derivative_vector', 
            'meshgrid_to_matrix', 'gen_collo', 'frequency_analysis',
-           'Domain', 
+           'Domain', 'Domain_circle',
            ]
 
 import numpy as np

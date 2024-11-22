@@ -1,11 +1,12 @@
-__all__ = ['latex_render', 
+__all__ = ['show_colors', 
            'ax_config', 'ax3d_config', 'zaxis_sci_formatter', 
-           'colorbar_config', ]
+           'latex_render','colorbar_config', ]
 
 import pkg_resources
 import scipy.io
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
+import matplotlib.ticker as ticker
 from matplotlib.ticker import ScalarFormatter
 import matplotlib.patches as patches
 
@@ -56,9 +57,10 @@ def show_colors(colors):
     """
     Display the colors as color blocks.
 
-    Parameters:
+    Parameters
     ----------
-    colors (list): List of colors to display.
+    colors: list
+        List of colors to display.
     """
     fig, ax = plt.subplots(1, 1, figsize=(len(colors), 0.8))
 
@@ -73,20 +75,20 @@ def show_colors(colors):
 
 
 def ax_config(ax,  
-            title=None, title_fontsize=13.,
-            xlabel=None, xlabel_fontsize=13.,
-            ylabel=None, ylabel_fontsize=13.,
+            title=None, title_fontsize=12.,
+            xlabel=None, xlabel_fontsize=12.,
+            ylabel=None, ylabel_fontsize=12.,
             xlims=None, ylims=None,
             spine_width=0.8, spine_color='gray',
             tick_major=True, 
             xtick_major=None, ytick_major=None,
             tick_major_direction='in', tick_major_color='gray',
-            tick_major_labelsize=12., tick_major_labelcolor='black',
+            tick_major_labelsize=10., tick_major_labelcolor='black',
             tick_major_length=3., tick_major_width=0.8, tick_major_pad=4.,
             tick_minor=True, 
             xtick_minor=None, ytick_minor=None, 
             tick_minor_direction='in', tick_minor_color='gray',
-            tick_minor_labelsize=12., tick_minor_labelcolor='black',
+            tick_minor_labelsize=10., tick_minor_labelcolor='black',
             tick_minor_length=2., tick_minor_width=0.5, tick_minor_pad=2.,
             grid_major=True, 
             grid_major_linewidth=0.5, grid_major_linestyle='--', 
@@ -101,7 +103,7 @@ def ax_config(ax,
     """
     Configure the plot with title, labels, spine, tick, grid, and legend parameters for a given Axes object.
 
-    Parameters:
+    Parameters
     ----------
     ax (matplotlib.axes.Axes): The Axes object to configure.
     title (str): Title of the plot.
@@ -165,9 +167,13 @@ def ax_config(ax,
     if ylims:
         ax.set_ylim(ylims[0], ylims[1])
 
-    for spine in ['top', 'bottom', 'left', 'right']:
-        ax.spines[spine].set_linewidth(spine_width)
-        ax.spines[spine].set_color(spine_color)
+    if ax.name == 'polar':
+        ax.spines['polar'].set_linewidth(spine_width)
+        ax.spines['polar'].set_edgecolor(spine_color)
+    else:
+        for spine in ['top', 'bottom', 'left', 'right']:
+            ax.spines[spine].set_linewidth(spine_width)
+            ax.spines[spine].set_color(spine_color)
     
     if tick_major:     
         ax.tick_params(axis='both', which='major', direction=tick_major_direction, pad=tick_major_pad,
@@ -211,7 +217,7 @@ def ax3d_config(ax, axis3don=True, view_angle=[5, 45],
                 title=None, title_size=12., title_pad=0.,
                 xlabel=None, ylabel=None, zlabel=None,
                 labelsize=12, labelpad=[-5,-5,-5], label_rotation=[0,0,-90],
-                pane_color='w', spine_color='grey', spine_width=0.5,
+                pane_color=(1,1,1,0), spine_color='grey', spine_width=0.5,
                 tick_labelsize=10, tick_pad=[-5,-4,-1.5], tick_color='k',
                 tick_inward_length=0, tick_outward_length=0.3, tick_linewidth=0.5, 
                 grid_color='lightgray', grid_linewidth=0.5, grid_linestyle=':',):
@@ -225,29 +231,24 @@ def ax3d_config(ax, axis3don=True, view_angle=[5, 45],
     view_angle (list): [elevation, azimuth] in degrees
     box_aspect (list): aspect ratio of the box
     axis_limits (list): limits of the x, y, and z axes, [xmin, xmax, ymin, ymax, zmin, zmax]
-
     title (str): title of the plot
     title_size (float): font size of the title
     title_pad (int): padding for the title
-
     xlabel (str): x-axis label
     ylabel (str): y-axis label
     zlabel (str): z-axis label
     labelsize (int/list): label font size, if int, apply to all labels, if list, apply to each label
     labelpad (list): padding for each axis label
     label_rotation (list): label rotation in degrees
-
     pane_color (str): color of the pane
     spine_color (str): color of the axis lines
     spine_width (float): width of the axis lines
-
     tick_pad (list): padding for each tick label
     tick_labelsize (int): font size of the tick labels
     tick_color (str): color of the ticks and tick labels
     tick_inward_length (float): inward length for the ticks
     tick_outward_length (float): outward length for the ticks
     tick_linewidth (float): linewidth of the ticks
-
     grid_color (str): color of the grid lines
     grid_linewidth (float): linewidth of the grid lines
     grid_linestyle (str): linestyle of the grid lines
@@ -297,14 +298,14 @@ def latex_render(flag=True):
     """
     Enable or disable LaTeX rendering in matplotlib plots.
 
-    Parameters:
+    Parameters
     ----------
     flag (bool): Whether to enable or disable LaTeX rendering.
                 If True, enable LaTeX rendering and set the font to 'Computer Modern Roman',
                         which is the default font used in LaTeX.
                 If False, disable LaTeX rendering and reset the font to default settings of matplotlib. 
 
-    Example:
+    Example
     ----------
     >>> plot_latex_render(True)
     """
@@ -318,26 +319,32 @@ def latex_render(flag=True):
         plt.rcParams['font.family'] = 'sans-serif'
 
 
-def colorbar_config(fig, ax, img, label=None, labelsize=10, 
+def colorbar_config(img, cax=None, ax=None, label=None, labelsize=10, 
                     shrink=0.7, aspect=20, pad=0, orientation='vertical', fraction=0.1,
                     tick_length=2, tick_width=0.5, 
                     outline_visible=True, 
-                    outline_linewidth=0.5, outline_edgecolor='black', outline_linestyle='-'):
+                    outline_linewidth=0.5, outline_edgecolor='black', outline_linestyle='-',
+                    sci_fmt=True, powerlimits=(-1, 1)):
     """
     Add colorbar to the figure and configure the appearance and label of the colorbar.
 
     Parameters
     ----------
-    fig : Figure object
-        The figure object associated with the colorbar.
-    ax : Axes object
-        The axes object associated with the colorbar.
     img : ScalarMappable object
         The image object created by ax.imshow() or similar functions.
+    cax : `~matplotlib.axes.Axes`, optional
+        Axes into which the colorbar will be drawn.  If `None`, then a new
+        Axes is created and the space for it will be stolen from the Axes(s)
+        specified in *ax*.
+    ax : `~matplotlib.axes.Axes` or iterable or `numpy.ndarray` of Axes, optional
+        The one or more parent Axes from which space for a new colorbar Axes
+        will be stolen. This parameter is only used if *cax* is not set.
+        Defaults to the Axes that contains the mappable used to create the
+        colorbar.
     label : str
         The label for the colorbar.
     labelsize : int, optional
-        The font size of the label, default is 10.
+        The font size of the ticks label, default is 10.
     shrink : float, optional
         The shrink factor of the colorbar, default is 0.7.
     aspect : int, optional
@@ -360,10 +367,15 @@ def colorbar_config(fig, ax, img, label=None, labelsize=10,
         The edge color of the colorbar outline, default is 'black'.
     outline_linestyle : str, optional
         The linestyle of the colorbar outline, default is '-'.
+    sci_fmt : bool, optional
+        Whether to use scientific format for the colorbar ticks, default is True.
+    powerlimits : tuple, optional
+        The power limits for scientific notation, default is (-1, 1), 
+        i.e. use scientific notation for numbers outside range 1e-1 to 1e1.
     """
     
     # Add colorbar
-    cbar = fig.colorbar(img, ax=ax, shrink=shrink, aspect=aspect, pad=pad, orientation=orientation, fraction=fraction)
+    cbar = plt.colorbar(img, cax=cax, ax=ax, shrink=shrink, aspect=aspect, pad=pad, orientation=orientation, fraction=fraction)
     cbar.ax.tick_params(labelsize=labelsize, length=tick_length, width=tick_width)
 
     if label:
@@ -377,6 +389,11 @@ def colorbar_config(fig, ax, img, label=None, labelsize=10,
     else:
         cbar.outline.set_visible(False)
 
+    if sci_fmt:
+        # set the colorbar ticks to scientific format
+        cbar.ax.yaxis.set_major_formatter(ticker.ScalarFormatter())
+        cbar.ax.yaxis.get_major_formatter().set_powerlimits(powerlimits)
+
 
 def zaxis_sci_formatter(fig, ax, scalar_pos=None):
     """
@@ -384,8 +401,7 @@ def zaxis_sci_formatter(fig, ax, scalar_pos=None):
     
     Attention
     ---------
-    This function should be called after the plot is created.
-    i.e., after ax.plot_surface(), ax.scatter(), etc.
+    This function should be called after the plot is created, i.e., after ax.plot_surface(), ax.scatter(), etc.
 
     Parameters
     ----------
