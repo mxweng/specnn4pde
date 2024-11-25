@@ -10,6 +10,7 @@ from typing import Optional, Union
 import matplotlib.pyplot as plt
 
 from .spectral import Jacobi_Gauss, Jacobi_Gauss_Lobatto
+from .myplot import ax_config, ax3d_config
 
 
 def gradients(u, x, order=1, retain_graph=False):
@@ -819,17 +820,21 @@ class Domain:
             figsize = (5, 1) if self.dim == 1 else (5, 5)
 
         if self.dim == 1:
-            fig = plt.figure(figsize=figsize)
-            plt.scatter(collo, torch.zeros_like(collo), s=s)
+            fig, ax = plt.subplots(figsize=figsize)
+            ax.scatter(collo, torch.zeros_like(collo), s=s)
+            ax_config(ax, legend=False)
         elif self.dim == 2:
-            fig = plt.figure(figsize=figsize)
-            plt.scatter(collo[:, 0], collo[:, 1], s=s)
+            fig, ax = plt.subplots(figsize=figsize)
+            ax.scatter(collo[:, 0], collo[:, 1], s=s)
+            ax_config(ax, legend=False)
         elif self.dim == 3:
             fig = plt.figure(figsize=figsize)
             ax = fig.add_subplot(111, projection='3d')
             ax.scatter(collo[:, 0], collo[:, 1], collo[:, 2], s=s)
+            ax3d_config(ax)
         else:
             raise ValueError('Only support 1D, 2D and 3D plotting!')
+
         plt.show()
 
 
@@ -1231,10 +1236,11 @@ class Domain_circle:
             figsize = (5, 1) if self.dim == 1 else (5, 5)
 
         if self.dim == 2:
-            fig = plt.figure(figsize=figsize)
+            fig, ax = plt.subplots(figsize=figsize)
             plt.scatter(collo[:, 0], collo[:, 1], s=s)
             plt.xlim(-self.radius*1.05, self.radius*1.05)
             plt.ylim(-self.radius*1.05, self.radius*1.05)
+            ax_config(ax, legend=False)
         # elif self.dim == 3:
         #     fig = plt.figure(figsize=figsize)
         #     ax = fig.add_subplot(111, projection='3d')
