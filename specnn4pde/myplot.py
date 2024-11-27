@@ -99,7 +99,7 @@ def ax_config(ax,
             legend=True, 
             legend_loc='best', legend_bbox_to_anchor=None, 
             legend_edgecolor='C0', legend_facecolor='1', legend_framealpha=0.3, 
-            legend_fontsize=12., legend_ncol=1, legend_handlelength=2.):
+            legend_fontsize=10., legend_ncol=1, legend_handlelength=2.):
     """
     Configure the plot with title, labels, spine, tick, grid, and legend parameters for a given Axes object.
 
