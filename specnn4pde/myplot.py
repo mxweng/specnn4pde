@@ -75,7 +75,7 @@ def show_colors(colors):
 
 
 def ax_config(ax,  
-            title=None, title_fontsize=12.,
+            title=None, title_fontsize=12., title_y=1., title_pad=6.,
             xlabel=None, xlabel_fontsize=12.,
             ylabel=None, ylabel_fontsize=12.,
             xlims=None, ylims=None,
@@ -108,6 +108,8 @@ def ax_config(ax,
     ax (matplotlib.axes.Axes): The Axes object to configure.
     title (str): Title of the plot.
     title_fontsize (float): Font size of the title.
+    title_y (float): Position of the title along the y-axis.
+    title_pad (float): Padding of the title from the plot.
     xlabel (str): Label of the x-axis.
     xlabel_fontsize (float): Font size of the x-axis label.
     ylabel (str): Label of the y-axis.
@@ -157,7 +159,7 @@ def ax_config(ax,
     legend_handlelength (float): Length of the legend handles.
     """
     if title:
-        ax.set_title(title, fontsize=title_fontsize)
+        ax.set_title(title, fontsize=title_fontsize, y=title_y, pad=title_pad)
     if xlabel:
         ax.set_xlabel(xlabel, fontsize=xlabel_fontsize)
     if ylabel:
@@ -214,7 +216,7 @@ def ax_config(ax,
 
 def ax3d_config(ax, axis3don=True, view_angle=[5, 45], 
                 box_aspect=None, axis_limits=None,
-                title=None, title_size=12., title_pad=0.,
+                title=None, title_size=12., title_y=1., title_pad=0.,
                 xlabel=None, ylabel=None, zlabel=None,
                 labelsize=12, labelpad=[-5,-5,-5], label_rotation=[0,0,-90],
                 pane_color=(1,1,1,0), spine_color='grey', spine_width=0.5,
@@ -233,6 +235,7 @@ def ax3d_config(ax, axis3don=True, view_angle=[5, 45],
     axis_limits (list): limits of the x, y, and z axes, [xmin, xmax, ymin, ymax, zmin, zmax]
     title (str): title of the plot
     title_size (float): font size of the title
+    title_y (float): position of the title along the y-axis
     title_pad (int): padding for the title
     xlabel (str): x-axis label
     ylabel (str): y-axis label
@@ -275,7 +278,7 @@ def ax3d_config(ax, axis3don=True, view_angle=[5, 45],
         axis._axinfo["grid"]['linestyle'] = grid_linestyle
     
     if title:
-        ax.set_title(title, fontsize=title_size, pad=title_pad)
+        ax.set_title(title, fontsize=title_size, y=title_y, pad=title_pad)
 
     if isinstance(labelsize, int) or isinstance(labelsize, float):
         labelsize = [labelsize]*3 
