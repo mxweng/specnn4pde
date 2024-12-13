@@ -4,11 +4,13 @@ __all__ = ['show_colors',
 
 import pkg_resources
 import scipy.io
+import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 import matplotlib.ticker as ticker
 from matplotlib.ticker import ScalarFormatter
 import matplotlib.patches as patches
+from mpl_toolkits.mplot3d import Axes3D
 
 
 class color:
@@ -158,11 +160,11 @@ def ax_config(ax,
     legend_ncol (int): Number of columns in the legend.
     legend_handlelength (float): Length of the legend handles.
     """
-    if title:
+    if title is not None:
         ax.set_title(title, fontsize=title_fontsize, y=title_y, pad=title_pad)
-    if xlabel:
+    if xlabel is not None:
         ax.set_xlabel(xlabel, fontsize=xlabel_fontsize)
-    if ylabel:
+    if ylabel is not None:
         ax.set_ylabel(ylabel, fontsize=ylabel_fontsize)
     if xlims:
         ax.set_xlim(xlims[0], xlims[1])
@@ -222,7 +224,8 @@ def ax3d_config(ax, axis3don=True, view_angle=[5, 45],
                 pane_color=(1,1,1,0), spine_color='grey', spine_width=0.5,
                 tick_labelsize=10, tick_pad=[-5,-4,-1.5], tick_color='k',
                 tick_inward_length=0, tick_outward_length=0.3, tick_linewidth=0.5, 
-                grid_color='lightgray', grid_linewidth=0.5, grid_linestyle=':',):
+                grid_color='lightgray', grid_linewidth=0.5, grid_linestyle=':',
+                projscale=[1,1,1,1], movescale=[0,0,0,0]):
     """
     Configure the plot with title, tick, grid parameters for a given 3D Axes object.
 
@@ -255,6 +258,9 @@ def ax3d_config(ax, axis3don=True, view_angle=[5, 45],
     grid_color (str): color of the grid lines
     grid_linewidth (float): linewidth of the grid lines
     grid_linestyle (str): linestyle of the grid lines
+    projscale (list): scale of the projection in direction [x, y, z, w]
+                        'w' is Homogeneous Coordinates
+    movescale (list): move the position of the plot in [x, y, width, height]                   
     """
     
     ax._axis3don = axis3don
@@ -277,16 +283,16 @@ def ax3d_config(ax, axis3don=True, view_angle=[5, 45],
         axis._axinfo["grid"]['linewidth'] = grid_linewidth
         axis._axinfo["grid"]['linestyle'] = grid_linestyle
     
-    if title:
+    if title is not None:
         ax.set_title(title, fontsize=title_size, y=title_y, pad=title_pad)
 
     if isinstance(labelsize, int) or isinstance(labelsize, float):
         labelsize = [labelsize]*3 
-    if xlabel:
+    if xlabel is not None:
         ax.set_xlabel(xlabel, labelpad=labelpad[0], fontsize=labelsize[0], rotation=label_rotation[0])
-    if ylabel:
+    if ylabel is not None:
         ax.set_ylabel(ylabel, labelpad=labelpad[1], fontsize=labelsize[1], rotation=label_rotation[1])
-    if zlabel:
+    if zlabel is not None:
         ax.set_zlabel(zlabel, labelpad=labelpad[2], fontsize=labelsize[2], rotation=label_rotation[2])
 
     if axis_limits:
@@ -295,6 +301,13 @@ def ax3d_config(ax, axis3don=True, view_angle=[5, 45],
         ax.set_zlim(*axis_limits[4:])
     if box_aspect:
         ax.set_box_aspect(box_aspect)
+
+    if projscale != [1,1,1,1]:
+        ax.get_proj = lambda: np.dot(Axes3D.get_proj(ax), np.diag(projscale))
+    if movescale != [0,0,0,0]:
+        pos = ax.get_position()
+        ax.set_position([pos.x0 + movescale[0], pos.y0 + movescale[1], 
+                         pos.width + movescale[2], pos.height + movescale[3]])
 
 
 def latex_render(flag=True):
