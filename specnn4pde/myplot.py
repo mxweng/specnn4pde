@@ -209,7 +209,8 @@ def ax_config(ax,
         ax.grid(grid_minor, which='minor', color=grid_minor_color, linestyle=grid_minor_linestyle, 
                 linewidth=grid_minor_linewidth, alpha=grid_minor_alpha)
     
-    if legend:
+    handles, labels = ax.get_legend_handles_labels()
+    if legend and labels:
         ax.legend(loc=legend_loc, bbox_to_anchor=legend_bbox_to_anchor, ncol=legend_ncol, 
                   edgecolor=legend_edgecolor, facecolor=legend_facecolor, 
                   framealpha=legend_framealpha, fontsize=legend_fontsize,
