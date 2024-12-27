@@ -1,4 +1,4 @@
-__all__ = ['show_colors', 
+__all__ = ['show_colors', 'cmaps', 'colors',
            'ax_config', 'ax3d_config', 'zaxis_sci_formatter', 
            'latex_render','colorbar_config', ]
 
@@ -341,7 +341,8 @@ def colorbar_config(img, cax=None, ax=None, label=None, labelsize=10,
                     tick_length=2, tick_width=0.5, 
                     outline_visible=True, 
                     outline_linewidth=0.5, outline_edgecolor='black', outline_linestyle='-',
-                    sci_fmt=True, powerlimits=(-1, 1)):
+                    sci_fmt=True, powerlimits=(-1, 1),
+                    scalar_pos=(1, 1.05)):
     """
     Add colorbar to the figure and configure the appearance and label of the colorbar.
 
@@ -389,6 +390,10 @@ def colorbar_config(img, cax=None, ax=None, label=None, labelsize=10,
     powerlimits : tuple, optional
         The power limits for scientific notation, default is (-1, 1), 
         i.e. use scientific notation for numbers outside range 1e-1 to 1e1.
+    scalar_pos : tuple, optional
+        The position of the scalar text, default is (1,1.05).
+        The first element represents the x position of the right side of the scientific notation text, where 0 is the left edge and 1 is the right edge.
+        The second element represents the y position of the bottom side of the scientific notation text, where 0 is the bottom edge and 1 is the top edge.
     """
     
     # Add colorbar
@@ -410,6 +415,11 @@ def colorbar_config(img, cax=None, ax=None, label=None, labelsize=10,
         # set the colorbar ticks to scientific format
         cbar.ax.yaxis.set_major_formatter(ticker.ScalarFormatter())
         cbar.ax.yaxis.get_major_formatter().set_powerlimits(powerlimits)
+
+    cbar.ax.yaxis.get_offset_text().set_x(scalar_pos[0])
+    cbar.ax.yaxis.get_offset_text().set_y(scalar_pos[1])
+    
+    return cbar
 
 
 def zaxis_sci_formatter(fig, ax, scalar_pos=None):
