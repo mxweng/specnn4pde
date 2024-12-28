@@ -553,7 +553,12 @@ class Domain:
                 Whether the point is inside the domain, shape (N_pts, 1)
         """
 
-        return torch.ones(x.shape[0], 1, dtype=torch.bool, device=self.device)
+        if strict:
+            res = torch.cat([x > self.tensor[0], x < self.tensor[1]], dim=1).all(dim=1, keepdim=True)
+        else:
+            res = torch.cat([x >= self.tensor[0], x <= self.tensor[1]], dim=1).all(dim=1, keepdim=True)
+
+        return res 
     
     def clip(self, ax, img):
         """
