@@ -11,6 +11,7 @@ import matplotlib.ticker as ticker
 from matplotlib.ticker import ScalarFormatter
 import matplotlib.patches as patches
 from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 
 class color:
@@ -311,7 +312,7 @@ def ax3d_config(ax, axis3don=True, view_angle=[5, 45],
                          pos.width + movescale[2], pos.height + movescale[3]])
 
 
-def latex_render(flag=True):
+def latex_render(flag=True, packages=[]):
     """
     Enable or disable LaTeX rendering in matplotlib plots.
 
@@ -321,6 +322,8 @@ def latex_render(flag=True):
                 If True, enable LaTeX rendering and set the font to 'Computer Modern Roman',
                         which is the default font used in LaTeX.
                 If False, disable LaTeX rendering and reset the font to default settings of matplotlib. 
+    packages (list): List of LaTeX packages to include in the preamble.
+                    Default packages include 'amssymb', 'amsmath', 'amsthm', 'bm', 'bbm'.
 
     Example
     ----------
@@ -328,7 +331,8 @@ def latex_render(flag=True):
     """
     if flag:
         plt.rcParams['text.usetex'] = True
-        plt.rcParams['text.latex.preamble'] = r'\usepackage{amssymb,amsmath,amsthm,bm,bbm}'
+        packages = list(set(packages+['amssymb', 'amsmath', 'amsthm', 'bm', 'bbm']))
+        plt.rcParams['text.latex.preamble'] = r'\usepackage{' + ','.join(packages) + '}'
         plt.rcParams['font.family'] = 'serif'
         plt.rcParams['font.serif'] = ['Computer Modern Roman', 'Times New Roman'] + plt.rcParams['font.serif']
     else:
@@ -337,8 +341,11 @@ def latex_render(flag=True):
 
 
 def colorbar_config(img, cax=None, ax=None, label=None, labelsize=10, 
-                    shrink=0.7, aspect=20, pad=0, orientation='vertical', fraction=0.1,
-                    tick_length=2, tick_width=0.5, 
+                    shrink=0.7, aspect=20, pad=0.1, orientation='vertical', 
+                    fraction=0.1, size='5%', loc='right',
+                    position=None,
+                    img_clim=None,
+                    ticks=None, tick_labels=None, tick_length=2, tick_width=0.5, 
                     outline_visible=True, 
                     outline_linewidth=0.5, outline_edgecolor='black', outline_linestyle='-',
                     sci_fmt=True, powerlimits=(-1, 1),
@@ -368,11 +375,26 @@ def colorbar_config(img, cax=None, ax=None, label=None, labelsize=10,
     aspect : int, optional
         The aspect ratio of the colorbar, default is 20.
     pad : float, optional
-        The padding between the colorbar and the axes, default is 0.
+        The padding between the colorbar and the axes, default is 0.1.
     orientation : str, optional
         The orientation of the colorbar, default is 'vertical'.
+    loc : str, optional
+        The location of the colorbar, default is 'right'.
+    size: str, optional
+        The size of the colorbar, default is '5%'.
     fraction : float, optional
         The fraction of the axes that the colorbar occupies, default is 0.1.
+    position : list or tuple, optional
+        The position of the colorbar [x0, y0, width, height], default is None.
+        If ax is not None, the position is relative to the position of ax, i.e.,
+                ax.get_position() with elementwise addition of position.
+        If ax is None, the position is relative to the figure.
+    img_clim : list or tuple, optional
+        The limits of color rendering and the colorbar, values outside the limits will be set to the limits.
+    ticks : list, optional
+        The ticks to be shown on the colorbar, default is None.
+    tick_labels : list, optional
+        The labels for the ticks, only used when ticks is not None, should be the same length as ticks.
     tick_length : float, optional
         The length of the ticks, default is 2.
     tick_width : float, optional
@@ -397,9 +419,35 @@ def colorbar_config(img, cax=None, ax=None, label=None, labelsize=10,
     """
     
     # Add colorbar
-    cbar = plt.colorbar(img, cax=cax, ax=ax, shrink=shrink, aspect=aspect, pad=pad, orientation=orientation, fraction=fraction)
+    if ax.name == 'rectilinear':
+        if cax is None and ax is not None:        
+            divider = make_axes_locatable(ax)
+            # add a new axes for the colorbar, the same size as the main axes
+            cax = divider.append_axes(loc, size=size, pad=pad)
+        cbar = plt.colorbar(img, cax=cax, ax=ax, shrink=shrink, aspect=aspect, pad=pad, orientation=orientation, fraction=fraction)
+    else:
+        # for 'polar' and '3d' axes
+        cbar = plt.colorbar(img, cax=cax, ax=ax, shrink=shrink, aspect=aspect, pad=pad, orientation=orientation, fraction=fraction)
+
+    if position is not None:
+        if ax is not None:
+            pos = ax.get_position()
+            cbar.ax.set_position([pos.x0 + pos.width + position[0], pos.y0+position[1], 
+                                    position[2], pos.height+position[3]])
+        else:
+            cbar.ax.set_position(position)
+
     cbar.ax.tick_params(labelsize=labelsize, length=tick_length, width=tick_width)
 
+    if img_clim:
+        img.set_clim(*img_clim)
+
+    if ticks is not None:
+        cbar.set_ticks(ticks)
+        if tick_labels:
+            if len(tick_labels) != len(ticks):
+                raise ValueError("The length of tick_labels and ticks should be the same.")
+            cbar.set_ticklabels(tick_labels)
     if label:
         cbar.set_label(label, fontsize=labelsize)
 
@@ -443,8 +491,9 @@ def zaxis_sci_formatter(fig, ax, scalar_pos=None):
     formatter.set_scientific(True)
     formatter.set_powerlimits((0, 0))
     ax.zaxis.set_major_formatter(formatter)
-
+    # redraws the figure to update the z-axis
     fig.canvas.draw()
+
     ax.get_zaxis().offsetText.set_visible(False)
     if scalar_pos is None:
         scalar_pos = ax.get_zaxis().offsetText.get_position()
