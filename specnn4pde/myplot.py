@@ -102,7 +102,8 @@ def ax_config(ax,
             legend=True, 
             legend_loc='best', legend_bbox_to_anchor=None, 
             legend_edgecolor='C0', legend_facecolor='1', legend_framealpha=0.3, 
-            legend_fontsize=10., legend_ncol=1, legend_handlelength=2.):
+            legend_fontsize=10., legend_ncol=1, legend_handlelength=2.,
+            sci_fmt=False, scilimits=(0, 0)):
     """
     Configure the plot with title, labels, spine, tick, grid, and legend parameters for a given Axes object.
 
@@ -160,6 +161,8 @@ def ax_config(ax,
     legend_fontsize (float): Font size of the legend.
     legend_ncol (int): Number of columns in the legend.
     legend_handlelength (float): Length of the legend handles.
+    sci_fmt (bool): Whether to use scientific format for the y-axis ticks.
+    scilimits (2-tuple): Limits for scientific notation.
     """
     if title is not None:
         ax.set_title(title, fontsize=title_fontsize, y=title_y, pad=title_pad)
@@ -216,6 +219,10 @@ def ax_config(ax,
                   edgecolor=legend_edgecolor, facecolor=legend_facecolor, 
                   framealpha=legend_framealpha, fontsize=legend_fontsize,
                   handlelength=legend_handlelength)
+        
+    if sci_fmt:    
+        ax.yaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
+        ax.ticklabel_format(style='sci', axis='y', scilimits=scilimits)
 
 
 def ax3d_config(ax, axis3don=True, view_angle=[5, 45], 

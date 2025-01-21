@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='specnn4pde',  # package name
-    version='0.1.1',  # version
+    version='0.1.2',  # version
     author='MXWeng',  # author name
     author_email='2431141461@qq.com',  # author email
     description='Solving partial differential equations using spectral methods and neural networks.',  # short description
@@ -36,4 +36,8 @@ setup(
                       'scipy',
                       'sympy',
                       ],  # dependencies
+    package_data={'': ['*.txt', '*.md', '*.mat'],  # include all .txt and .md files
+                  'specnn4pde': ['*.mat'],  # include all .dat files in the package 'specnn4pde'
+                  },
+    include_package_data=True,
 )
