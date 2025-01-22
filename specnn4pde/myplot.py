@@ -37,6 +37,7 @@ cmaps.gray = ListedColormap(mat_data['gray'])
 cmaps.bone = ListedColormap(mat_data['bone'])
 cmaps.copper = ListedColormap(mat_data['copper'])
 cmaps.pink = ListedColormap(mat_data['pink'])
+cmaps.redblue = ListedColormap(mat_data['redblue'])
 cmaps.sky = ListedColormap(mat_data['sky'])
 cmaps.abyss = ListedColormap(mat_data['abyss'])
 cmaps.jet = ListedColormap(mat_data['jet'])
@@ -426,7 +427,7 @@ def colorbar_config(img, cax=None, ax=None, label=None, labelsize=10,
     """
     
     # Add colorbar
-    if ax.name == 'rectilinear':
+    if ax and ax.name == 'rectilinear':
         if cax is None and ax is not None:        
             divider = make_axes_locatable(ax)
             # add a new axes for the colorbar, the same size as the main axes
