@@ -355,9 +355,11 @@ def gen_collo(Domain = [], grids = [], temporal = False, corner = True, G = None
     
 
 
-def frequency_analysis(domain, func = None, x = None, Func_val = None, grid = 66, device='cpu', dtype=torch.float):
+def frequency_analysis(domain, func = None, x = None, Func_val = None, grid = 66, real=True, device='cpu', dtype=torch.float):
     """
     Compute the main frequency and its amplitude of the function on the domain.
+
+    Related functions: `spectral.CosSin_decomposition`
 
     Args
     -----------
@@ -373,6 +375,10 @@ def frequency_analysis(domain, func = None, x = None, Func_val = None, grid = 66
             If None, func should be provided.
     grid (int):
             The number of points in each dimension
+    real (bool):
+            If True, the function is real-valued, the symmetry part of the Fourier 
+                transform will be removed and the amplitude will be doubled,
+                except the zero frequency. 
     device (str):
             The device of the tensors, e.g. 'cpu' or 'cuda'
     dtype (torch.dtype):
@@ -386,6 +392,10 @@ def frequency_analysis(domain, func = None, x = None, Func_val = None, grid = 66
             The amplitude of the main frequency
     fft (tensor):
             The Fourier transform of the function
+    freq (list of arrays):
+        The frequency in each dimension
+    main_freq_ind (tuple):
+            The index of the main frequency in the Fourier transform
 
     Example
     -----------
@@ -397,7 +407,7 @@ def frequency_analysis(domain, func = None, x = None, Func_val = None, grid = 66
     >>> print("Main Frequency: ", main_freq)
     >>> print("Amplitude: ", amplitude)
     Main Frequency:  tensor([1.3333, 2.5000, 3.0000, 4.0000], device='cuda:0')
-    Amplitude:  tensor(8.8474, device='cuda:0')
+    Amplitude:  tensor(-4.7437+7.4749j, device='cuda:0')
     """
 
     # check the input
@@ -413,18 +423,33 @@ def frequency_analysis(domain, func = None, x = None, Func_val = None, grid = 66
             x, _ = gen_collo(domain, [grid+2]*dim, corner = False, indexing='ij', device=device, dtype=dtype)
         Func_val = func(x).reshape(*[grid] * dim)
 
-    # compute the Fourier transform and remove the symmetric part
-    fft = torch.fft.fftn(Func_val)
-    slices = [slice(0, n // 2) for n in fft.shape]    
-    fft = torch.abs(fft[slices]) 
-    fft = 2 * fft / (grid)**dim
+    freq = []
+    for i in range(dim):
+        freq.append(np.fft.fftfreq(grid, d = (dom_tensor[1, i] - dom_tensor[0, i]).item() / grid))  
 
-    # find the main frequency and its amplitude
-    main_freq = np.unravel_index(torch.argmax(fft).item(), fft.shape)
-    amplitude = fft[main_freq]
-    main_freq = torch.tensor(main_freq, device=device, dtype=dtype) / (dom_tensor[1] - dom_tensor[0])
+    # compute the Fourier transform
+    if real:    # real-valued function, the Fourier transform is symmetric
+        fft = torch.fft.fftn(Func_val)
+        # remove the symmetric part
+        slices = [slice(0, (n+1) // 2) for n in fft.shape]
+        freq = [f[(slices[i])] for i, f in enumerate(freq)]
+        fft = fft[slices] 
+        fft = 2 * fft / (grid)**dim
+        fft[tuple([0]*dim)] /= 2
 
-    return main_freq, amplitude, fft
+        # find the main frequency and its amplitude
+        main_freq_ind = np.unravel_index(torch.argmax(torch.abs(fft)).item(), fft.shape)
+        amplitude = fft[main_freq_ind]
+        main_freq = torch.tensor(main_freq_ind, device=device, dtype=dtype) / (dom_tensor[1] - dom_tensor[0])
+
+    else:
+        fft = torch.fft.fftn(Func_val) / (grid)**dim
+        
+        main_freq_ind = np.unravel_index(torch.argmax(torch.abs(fft)).item(), fft.shape)
+        amplitude = fft[main_freq_ind]
+        main_freq = torch.tensor([freq[i][main_freq_ind[i]] for i in range(dim)], device=device, dtype=dtype)
+
+    return main_freq, amplitude, fft, freq, main_freq_ind
 
 
 

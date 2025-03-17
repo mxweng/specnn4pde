@@ -1,6 +1,7 @@
 __all__ = ['JacobiP', 'Jacobi_Gauss', 'Jacobi_Gauss_Lobatto', 
            'HermiteP', 'HermiteF', 'Hermite_Gauss', 'mapped_Jacobi_Gauss',
-           'glue1D', 'glue_pts_1D',
+           'glue1D', 'glue_pts_1D', 
+           'CosSin_decomposition', 'BesselEq_LG_mat'
            ]
 
 """
@@ -20,11 +21,11 @@ from scipy.sparse import diags, eye, lil_matrix, csr_matrix
 from scipy.linalg import eigh, block_diag
 from sympy import symbols, sqrt, atanh, tanh, sinh, log, lambdify, diff
 
-def JacobiP(x, alpha, beta, N):
+def JacobiP(x, alpha, beta, N, ortho=True):
     """
-    This function evaluates the orthonormal Jacobi polynomial of order 
+    This function evaluates the (orthonormal) Jacobi polynomial of order 
     up to N with parameters alpha and beta at points x.
-    
+     
     Parameters
     ----------
     x : array
@@ -35,11 +36,14 @@ def JacobiP(x, alpha, beta, N):
         The beta parameter of the Jacobi polynomial. Must be greater than -1.
     N : int
         The order of the Jacobi polynomial.
+    ortho : bool, optional
+        If True, we compute the orthonormal Jacobi polynomial, otherwise the 
+        standard Jacobi polynomial. Default is True.
 
     Returns
     ----------
     PL: ndarray, shape (N + 1, len(x))
-        The N-th row of PL is the values of orthonormal Jacobi 
+        The N-th row of PL is the values of (orthonormal) Jacobi 
         polynomial J_{N}^{alpha, beta}(x) / sqrt(gamma_{N}^{alpha, beta}).
 
     References:
@@ -48,23 +52,32 @@ def JacobiP(x, alpha, beta, N):
     2. Code-reproduction/Poisson-GPU.ipynb
     """
 
-    xp = x.copy()
-    if len(xp.shape) == 2 and xp.shape[1] == 1:
-        xp = xp.T
-    PL = np.zeros((N + 1, max(xp.shape)))
+    x = x.flatten()
+    PL = np.zeros((N + 1, len(x)))
     gamma0 = np.power(2, alpha + beta + 1) * gamma(alpha + 1) * gamma(beta + 1) / gamma(alpha + beta + 2)
-    PL[0] = 1.0 / np.sqrt(gamma0)
+    PL[0] = 1.0 / np.sqrt(gamma0) if ortho else 1.0
     if N == 0:
         return PL.T
-    gamma1 = (alpha + 1) * (beta + 1) / (alpha + beta + 3) * gamma0
-    PL[1] = ((alpha + beta + 2) * xp / 2 + (alpha - beta) / 2) / np.sqrt(gamma1)
-    aold = 2 / (2 + alpha + beta) * np.sqrt((alpha + 1) * (beta + 1) / (alpha + beta + 3))
-    for i in range(1, N):
-        h1 = 2 * i + alpha + beta
-        anew = 2 / (h1 + 2) * np.sqrt((i + 1) * (i + 1 + alpha + beta) * (i + 1 + alpha) * (i + 1 + beta) / (h1 + 1) / (h1 + 3))
-        bnew = -(alpha * alpha - beta * beta) / h1 / (h1 + 2)
-        PL[i + 1] = 1 / anew * (-aold * PL[i - 1] + (xp - bnew) * PL[i])
-        aold = anew
+    
+    if ortho:
+        gamma1 = (alpha + 1) * (beta + 1) / (alpha + beta + 3) * gamma0
+        PL[1] = ((alpha + beta + 2) * x / 2 + (alpha - beta) / 2) / np.sqrt(gamma1)
+        aold = 2 / (2 + alpha + beta) * np.sqrt((alpha + 1) * (beta + 1) / (alpha + beta + 3))
+        for i in range(1, N):
+            h1 = 2 * i + alpha + beta
+            anew = 2 / (h1 + 2) * np.sqrt((i + 1) * (i + 1 + alpha + beta) * (i + 1 + alpha) * (i + 1 + beta) / (h1 + 1) / (h1 + 3))
+            bnew = -(alpha * alpha - beta * beta) / h1 / (h1 + 2)
+            PL[i + 1] = 1 / anew * (-aold * PL[i - 1] + (x - bnew) * PL[i])
+            aold = anew
+    else:
+        PL[1, :] = ((alpha + beta + 2) * x + alpha - beta) / 2
+        for n in range(1, N):
+            a_n = (2 * n + alpha + beta + 1) * (2 * n + alpha + beta + 2) / (2 * (n + 1) * (n + alpha + beta + 1))
+            b_n = ((beta**2 - alpha**2) * (2 * n + alpha + beta + 1)) / \
+                    (2 * (n + 1) * (n + alpha + beta + 1) * (2 * n + alpha + beta))
+            c_n = (n + alpha) * (n + beta) * (2 * n + alpha + beta + 2) / \
+                    ((n + 1) * (n + alpha + beta + 1) * (2 * n + alpha + beta))
+            PL[n + 1, :] = (a_n * x - b_n) * PL[n, :] - c_n * PL[n - 1, :]
     return PL
 
 def Jacobi_Gauss(alpha, beta, N):
@@ -464,3 +477,91 @@ def glue_pts_1D(interval, Ncell, r, end_pts = False):
     if end_pts:
         r = np.delete(r, np.arange(Np-1, len(r)-1, Np))
     return r
+
+
+def CosSin_decomposition(f, r, M):
+    """
+    Compute Fourier coefficients f^{1m}(r), f^{2m}(r) using NumPy FFT
+    .. math::
+        f(r, \theta_j) = \sum_{m=0}^M \left( f^{1m}(r) \cos(m \theta_j) + f^{2m}(r) \sin(m \theta_j) \right)
+    where :math:`\left\{ \theta_j = j \pi / M \right\}_{j=0}^{2M-1}` are the Fourier-collocation points.
+
+    Related functions: `npde.frequency_analysis`
+    
+    Parameters
+    ----------
+    f : function, real-valued
+        Target function f(r, theta), accepting 1Darray r and 1Darray theta as input
+    r : 1Darray
+        Fixed r value
+    M : int
+        Maximum frequency index M
+    
+    Returns
+    -------
+    f1_m : ndarray
+        Cosine coefficients f^{1m}(r)
+    f2_m : ndarray
+        Sine coefficients f^{2m}(r)
+
+    Examples
+    --------
+    >>> f = lambda r, theta: r * (1 + np.cos(2 * theta) + 0.5 * np.sin(3 * theta))
+    >>> CosSin_decomposition(f, np.array([1., 2.]), 4)
+    """
+    r = r.flatten()
+    theta = np.array([j * np.pi / M for j in range(2 * M)])
+    Grid = np.meshgrid(r, theta, indexing='ij')
+    R, T = Grid[0].flatten(), Grid[1].flatten()
+
+    f_values = f(R,T).reshape(len(r),-1)                    # Evaluate function values
+    f_hat = np.fft.fft(f_values, axis=1) / (2 * M)          # Normalize FFT result
+    f1_m = 2 * f_hat.real[:,:M + 1]                         # Cosine coefficients (real part)
+    f2_m = -2 * f_hat.imag[:,:M + 1]                        # Sine coefficients (imaginary part)
+    f1_m[:,0], f2_m[:,0] = f1_m[:,0] / 2, f2_m[:,0] / 2     # Adjust zero frequency term
+
+    return f1_m, f2_m
+
+
+def BesselEq_LG_mat(N):
+    """
+    A part of spectral-Galerkin method for a Bessel-type equation.
+    Constructs sparse matrices for Legendre-Galerkin approximation of the Bessel equation, 
+    see 'Spectral Methods P311'.
+
+    Parameters
+    ---------
+    N: (int) the number of points.
+
+    returns
+    -------
+    A, B, C: (csr_matrix) sparse matrices for m > 0 case, shape (N-1, N-1)  
+    A0, C0: (csr_matrix) sparse matrices for m = 0 case, shape (N, N)
+    """
+    # m > 0 case
+    N = N - 1
+    diag_A = np.array([4 * i + 6 for i in range(N)])
+    upper_A = np.array([2 * i + 4 for i in range(N - 1)])
+    A = diags([diag_A, upper_A, upper_A], [0, 1, -1], format='csr')
+
+    diag_B = np.array([2 * (2 * i + 3) / ((i + 1) * (i + 2)) for i in range(N)])
+    upper_B = np.array([-2 / (i + 2) for i in range(N - 1)])
+    B = diags([diag_B, upper_B, upper_B], [0, 1, -1], format='csr')
+
+    diag_C = np.array([2 / (2 * i + 1) + 2 / (2 * i + 5) for i in range(N)])
+    upper_C1 = np.array([2 / ((2 * i + 1) * (2 * i + 5)) + 2 * (i + 3) / ((2 * i + 5) * (2 * i + 7)) for i in range(N - 1)])
+    upper_C2 = np.array([-2 / (2 * i + 5) for i in range(N - 2)])
+    upper_C3 = np.array([-2 * (i + 3) / ((2 * i + 5) * (2 * i + 7)) for i in range(N - 3)])
+    C = diags([diag_C, upper_C1, upper_C1, upper_C2, upper_C2, upper_C3, upper_C3], 
+              [0, 1, -1, 2, -2, 3, -3], format='csr')
+    
+    # m = 0 case
+    N = N + 1
+    A0 = diags([np.array([2 * i + 2 for i in range(N)])], [0], format='csr')
+
+    diag_C0 = np.array([4 * (i + 1) / (2 * i + 1) / (2 * i + 3) for i in range(N)])
+    upper_C01 = np.array([4 / (2 * i + 1) / (2 * i + 3) / (2 * i + 5) for i in range(N - 1)])
+    upper_C02 = np.array([- 2 * (i + 2) / (2 * i + 3) / (2 * i + 5) for i in range(N - 2)])
+    C0 = diags([diag_C0, upper_C01, upper_C01, upper_C02, upper_C02], [0, 1, -1, 2, -2], format='csr')
+
+    return A, B, C, A0, C0
