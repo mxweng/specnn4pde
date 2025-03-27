@@ -5,6 +5,7 @@ Summary: Solving partial differential equations using spectral methods and neura
 Home-page: https://github.com/mxweng/specnn4pde
 Author: MXWeng
 Author-email: 2431141461@qq.com
+License: MIT
 Classifier: Development Status :: 3 - Alpha
 Classifier: License :: OSI Approved :: MIT License
 Classifier: Operating System :: OS Independent
@@ -35,6 +36,7 @@ Dynamic: classifier
 Dynamic: description
 Dynamic: description-content-type
 Dynamic: home-page
+Dynamic: license
 Dynamic: license-file
 Dynamic: requires-dist
 Dynamic: requires-python
