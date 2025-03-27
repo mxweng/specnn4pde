@@ -9,13 +9,14 @@ SpecNN4PDE is an under development Python library for solving partial differenti
 - `nn`: Contains classes for building neural networks, including [random feature method (RFM)](https://global-sci.org/intro/article_detail/jml/21029.html) neural networks, etc.
 - `sav`: The [Scalar auxiliary variable (SAV)](https://www.sciencedirect.com/science/article/pii/S002199911730774X) optimizer and its variants.
 - `npde`: Functions for solving partial differential equations, e.g., calculating the multivariate derivatives.
+- `torch_special`: A collection of PyTorch-based special functions, e.g., the modified Bessel function of the first and second kind.
 
 
 This project is still in the early stages of development, and the API is subject to change. The library is designed to be used in research and educational settings.
 
 ## Dependencies
 
-When you install this library using pip, most dependencies will be automatically handled. However, please note that the `nn`, `sav`, and `npde` module requires PyTorch, which needs to be installed separately.
+When you install this library using pip, most dependencies will be automatically handled. However, please note that the `nn`, `sav`, `npde`, and `torch_special` module requires PyTorch, which needs to be installed separately.
 
 You can install PyTorch by following the instructions on the [official PyTorch website](https://pytorch.org/get-started/locally/). Please ensure that you select the correct installation command based on your operating system, package manager, Python version, and the specifications of your CUDA toolkit if you are planning to use PyTorch with GPU support.
 
