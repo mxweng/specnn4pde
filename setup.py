@@ -7,13 +7,12 @@ setup(
     author='MXWeng',  # author name
     author_email='2431141461@qq.com',  # author email
     description='Solving partial differential equations using spectral methods and neural networks.',  # short description
-    long_description=open('README.md').read(),  # long description, usually your README
+    long_description=open('README.md', encoding='utf-8').read(),  # long description, usually your README
     long_description_content_type='text/markdown',  # format of the long description, 'text/markdown' if it's Markdown
     url='https://github.com/mxweng/specnn4pde',  # project homepage
     packages=find_packages(),  # automatically discover all packages
     classifiers=[
         'Development Status :: 3 - Alpha',
-        'License :: OSI Approved :: MIT License',
         'Operating System :: OS Independent',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.8',
