@@ -1,6 +1,6 @@
 __all__ = ['gradients', 'Jacobian', 'partial_derivative', 'partial_derivative_vector', 
            'meshgrid_to_matrix', 'gen_collo', 'frequency_analysis',
-           'Domain', 'Domain_circle',
+           'Domain', 'Domain_circle', 'inpolygon', 'inpolygonc'
            ]
 
 import numpy as np
@@ -8,6 +8,7 @@ import torch
 from torch.autograd.functional import jacobian
 from typing import Optional, Union
 import matplotlib.pyplot as plt
+from matplotlib.path import Path
 
 from .spectral import Jacobi_Gauss, Jacobi_Gauss_Lobatto
 from .myplot import ax_config, ax3d_config
@@ -536,7 +537,7 @@ class Domain:
 
         if complex:
             if area is None:
-                raise ValueError('The area should be provided for the complex region.')
+                raise ValueError('The `area` should be provided for the complex region.')
             self.area = area
         else:
             self.area = torch.prod(self.width)
@@ -1278,3 +1279,49 @@ class Domain_circle:
         else:
             raise ValueError('Only support 2D plotting!')
         plt.show()
+
+
+
+def inpolygon(xq, yq, xv, yv, radius=0.):
+    """
+    `inpolygon` function from Matlab. Check if points are inside a polygon or not.
+
+    Parameters
+    ----------
+    xq, yq : (N,), (N,) tensor
+        x and y coordinates of the query points.
+    xv, yv : (M,), (M,) tensor
+        x and y coordinates of the polygon vertices.
+    radius : float, optional, default 0.
+        Contractions or expansions of the polygon.
+        The point is considered inside the polygon if it is within a distance of radius from the polygon.
+        
+    Returns
+    -------
+    in_poly : boolean ndarray (M,)
+        True if the point is inside the polygon, False otherwise.
+    """
+    xq, yq, xv, yv = [v.flatten() for v in (xq, yq, xv, yv)]
+    poly_path = Path(torch.column_stack([xv, yv]))
+    points = torch.column_stack([xq, yq])
+    in_poly = poly_path.contains_points(points, radius=radius)
+    return in_poly
+
+def inpolygonc(zq, zv, radius=0.):
+    """
+    complex variant of `inpolygon`
+
+    Parameters
+    ----------
+    zq, zv : (N,) tensor
+        Complex query points and polygon vertices.
+    radius : float, optional, default 0.
+        Contractions or expansions of the polygon.
+        The point is considered inside the polygon if it is within a distance of radius from the polygon.
+
+    Returns
+    -------
+    in_poly : boolean ndarray (M,)
+        True if the point is inside the polygon, False otherwise.
+    """
+    return inpolygon(zq.real, zq.imag, zv.real, zv.imag, radius=radius)

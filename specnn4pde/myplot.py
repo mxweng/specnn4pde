@@ -1,6 +1,7 @@
 __all__ = ['show_colors', 'cmaps', 'colors',
            'ax_config', 'ax3d_config', 'zaxis_sci_formatter', 
-           'latex_render','colorbar_config', ]
+           'latex_render','colorbar_config', 
+           'inpolygon', 'inpolygonc']
 
 import pkg_resources
 import scipy.io
@@ -10,6 +11,7 @@ from matplotlib.colors import ListedColormap
 import matplotlib.ticker as ticker
 from matplotlib.ticker import ScalarFormatter
 import matplotlib.patches as patches
+from matplotlib.path import Path
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
@@ -506,3 +508,48 @@ def zaxis_sci_formatter(fig, ax, scalar_pos=None):
     if scalar_pos is None:
         scalar_pos = ax.get_zaxis().offsetText.get_position()
     ax.text2D(*scalar_pos, ax.get_zaxis().offsetText.get_text(), transform=ax.transAxes)
+
+
+def inpolygon(xq, yq, xv, yv, radius=0.):
+    """
+    `inpolygon` function from Matlab. Check if points are inside a polygon or not.
+
+    Parameters
+    ----------
+    xq, yq : (N,), (N,) array
+        x and y coordinates of the query points.
+    xv, yv : (M,), (M,) array
+        x and y coordinates of the polygon vertices.
+    radius : float, optional, default 0.
+        Contractions or expansions of the polygon.
+        The point is considered inside the polygon if it is within a distance of radius from the polygon.
+        
+    Returns
+    -------
+    in_poly : boolean ndarray (M,)
+        True if the point is inside the polygon, False otherwise.
+    """
+    xq, yq, xv, yv = [v.flatten() for v in (xq, yq, xv, yv)]
+    poly_path = Path(np.column_stack([xv, yv]))
+    points = np.column_stack([xq, yq])
+    in_poly = poly_path.contains_points(points, radius=radius)
+    return in_poly
+
+def inpolygonc(zq, zv, radius=0.):
+    """
+    complex variant of `inpolygon`
+
+    Parameters
+    ----------
+    zq, zv : (N,) array
+        Complex query points and polygon vertices.
+    radius : float, optional, default 0.
+        Contractions or expansions of the polygon.
+        The point is considered inside the polygon if it is within a distance of radius from the polygon.
+
+    Returns
+    -------
+    in_poly : boolean ndarray (M,)
+        True if the point is inside the polygon, False otherwise.
+    """
+    return inpolygon(zq.real, zq.imag, zv.real, zv.imag, radius=radius)

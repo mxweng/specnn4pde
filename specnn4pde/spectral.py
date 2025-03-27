@@ -1,4 +1,4 @@
-__all__ = ['JacobiP', 'Jacobi_Gauss', 'Jacobi_Gauss_Lobatto', 
+__all__ = ['JacobiP', 'JacobiP_torch', 'Jacobi_Gauss', 'Jacobi_Gauss_Lobatto', 
            'HermiteP', 'HermiteF', 'Hermite_Gauss', 'mapped_Jacobi_Gauss',
            'glue1D', 'glue_pts_1D', 
            'CosSin_decomposition', 'BesselEq_LG_mat'
@@ -57,7 +57,7 @@ def JacobiP(x, alpha, beta, N, ortho=True):
     gamma0 = np.power(2, alpha + beta + 1) * gamma(alpha + 1) * gamma(beta + 1) / gamma(alpha + beta + 2)
     PL[0] = 1.0 / np.sqrt(gamma0) if ortho else 1.0
     if N == 0:
-        return PL.T
+        return PL
     
     if ortho:
         gamma1 = (alpha + 1) * (beta + 1) / (alpha + beta + 3) * gamma0
@@ -79,6 +79,7 @@ def JacobiP(x, alpha, beta, N, ortho=True):
                     ((n + 1) * (n + alpha + beta + 1) * (2 * n + alpha + beta))
             PL[n + 1, :] = (a_n * x - b_n) * PL[n, :] - c_n * PL[n - 1, :]
     return PL
+
 
 def Jacobi_Gauss(alpha, beta, N):
     """
