@@ -44,6 +44,10 @@ else:
 with open(init_file, 'w') as f:
     f.writelines(init_lines)
 
+# 清理旧的构建文件（避免错误的元数据）
+# os.system("rm -rf build dist specnn4pde.egg-info") # Unix
+os.system("rmdir /s /q build dist specnn4pde.egg-info") # Windows
+
 # 添加所有更改到git
 os.system('git add .')
 
