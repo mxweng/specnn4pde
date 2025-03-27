@@ -39,5 +39,6 @@ setup(
     package_data={'specnn4pde': ['*.mat'],  # include all .mat files in the package 'specnn4pde'
                 #   '': ['*.txt', '*.md', '*.mat'],  # include all .txt and .md files
                   },
+    license='MIT',
     include_package_data=True,
 )

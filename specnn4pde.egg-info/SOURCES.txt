@@ -8,6 +8,7 @@ specnn4pde/myplot.py
 specnn4pde/nn.py
 specnn4pde/npde.py
 specnn4pde/spectral.py
+specnn4pde/torch_special.py
 specnn4pde/utils.py
 specnn4pde.egg-info/PKG-INFO
 specnn4pde.egg-info/SOURCES.txt
