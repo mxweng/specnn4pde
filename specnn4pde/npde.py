@@ -1,6 +1,7 @@
 __all__ = ['gradients', 'Jacobian', 'partial_derivative', 'partial_derivative_vector', 
            'meshgrid_to_matrix', 'gen_collo', 'frequency_analysis',
-           'Domain', 'Domain_circle', 'inpolygon', 'inpolygonc'
+           'Domain', 'Domain_circle', 'Domain_2Dcomplex'
+           'inpolygon', 'inpolygonc', 'generate_polygon',
            ]
 
 import numpy as np
@@ -9,6 +10,7 @@ from torch.autograd.functional import jacobian
 from typing import Optional, Union
 import matplotlib.pyplot as plt
 from matplotlib.path import Path
+from matplotlib.patches import Polygon
 
 from .spectral import Jacobi_Gauss, Jacobi_Gauss_Lobatto
 from .myplot import ax_config, ax3d_config
@@ -596,7 +598,7 @@ class Domain:
         ax (Axes):
                 The axes to plot the image
         img (AxesImage):
-                The image to be clipped
+                The image to be clipped, e.g. the output of ax.imshow()
 
         Sample codes
         ----------------
@@ -833,7 +835,7 @@ class Domain:
         return samples[random_indices]
 
     
-    def show_collo(self, collo, s=1, figsize=None):
+    def show_collo(self, collo, s=1, c='C0', marker='.', figsize=None, axis_equal=True):
         """
         Show the collocation points.
 
@@ -843,8 +845,14 @@ class Domain:
                 The collocation points, shape (N_pts, dim)
         s (int):
                 The size of the points
+        c (str):
+                The color of the points
+        marker (str):
+                The marker of the points
         figsize (tuple):
                 The size of the figure
+        axis_equal (bool):
+                Whether to set the axis equal
         """
 
         if figsize is None:
@@ -852,19 +860,22 @@ class Domain:
 
         if self.dim == 1:
             fig, ax = plt.subplots(figsize=figsize)
-            ax.scatter(collo, torch.zeros_like(collo), s=s)
+            ax.scatter(collo, torch.zeros_like(collo), s=s, c=c, marker=marker)
             ax_config(ax, legend=False)
         elif self.dim == 2:
             fig, ax = plt.subplots(figsize=figsize)
-            ax.scatter(collo[:, 0], collo[:, 1], s=s)
+            ax.scatter(collo[:, 0], collo[:, 1], s=s, c=c, marker=marker)
             ax_config(ax, legend=False)
         elif self.dim == 3:
             fig = plt.figure(figsize=figsize)
             ax = fig.add_subplot(111, projection='3d')
-            ax.scatter(collo[:, 0], collo[:, 1], collo[:, 2], s=s)
+            ax.scatter(collo[:, 0], collo[:, 1], collo[:, 2], s=s, c=c, marker=marker)
             ax3d_config(ax)
         else:
             raise ValueError('Only support 1D, 2D and 3D plotting!')
+        
+        if axis_equal:
+            ax.axis('equal')
 
         plt.show()
 
@@ -1301,7 +1312,7 @@ def inpolygon(xq, yq, xv, yv, radius=0.):
     in_poly : boolean ndarray (M,)
         True if the point is inside the polygon, False otherwise.
     """
-    xq, yq, xv, yv = [v.flatten() for v in (xq, yq, xv, yv)]
+    xq, yq, xv, yv = [v.flatten().cpu() for v in (xq, yq, xv, yv)]
     poly_path = Path(torch.column_stack([xv, yv]))
     points = torch.column_stack([xq, yq])
     in_poly = poly_path.contains_points(points, radius=radius)
@@ -1325,3 +1336,371 @@ def inpolygonc(zq, zv, radius=0.):
         True if the point is inside the polygon, False otherwise.
     """
     return inpolygon(zq.real, zq.imag, zv.real, zv.imag, radius=radius)
+
+
+def generate_polygon(P, dtype=torch.float64, device='cpu'):
+    """
+    Generate a polygon or circular polygon with specified vertices, shapes, or random configurations.
+
+    Parameters
+    ----------
+    P : list, numpy.ndarray, int, or str
+        list of corners v and pairs [v r] to specify a circular
+            polygon: r = radius of curvature of arc from this v to the next
+        or numpy.ndarray of corners as complex numbers z = x+iy in counterclockwise
+            order to specify a polygon
+        or one of the following specified strings
+            'sqr'[square], 'rec'[tangle], 'snow'[flake], pent[agaon],
+            'hex'[agon], 'kite', 'L', 'circleL', 'C', 'bullet', 'iso'
+        or integer >= 3, the number of corners of a random polygon
+        or integer <= -3, -1 x number of corners of a random circular polygon]
+
+    Returns
+    -------
+    P : list of corners v and pairs [v r] to specify a circular
+            polygon: r = radius of curvature of arc from this v to the next
+    w : torch.Tensor of complex, shape (nw, 1)
+        corner vertices of the polygon in counterclockwise order
+    ww : torch.Tensor of complex
+        Boundary points for plotting
+    pt : list of callables, length nw
+        parametric equation of each segment of the boundary
+        pt[k](t: tensor) returns the point at distance t from w[k] to w[k+1]
+    dw : torch.Tensor, shape (nw,)
+        distance to next corner
+    outward : torch.Tensor of complex, shape (nw,)
+        outward direction from corners
+    ang : torch.Tensor, shape (nw,)
+        angles of corners in radians
+    scl : float
+        characteristic length scale of the domain
+    """    
+    ########## First treat the domain, defined by P ##########
+    randomcirc = False
+    if not isinstance(P, list):         # Equivalent to MATLAB's `iscell(P)`
+        if isinstance(P, np.ndarray):   # vertices have been specified
+            w = P.reshape(-1)
+        elif isinstance(P, int):
+            if P < 0:                   # random circular arcs
+                randomcirc = True;  P = -P;
+            # random vertices
+            w = np.exp(2j * np.pi * np.arange(1, P + 1) / P) * (0.1 + np.random.rand(P))
+        elif isinstance(P, str):
+            if P == 'sqr':
+                w = 0.5 * np.array([-1-1j, 1-1j, 1+1j, -1+1j])
+            elif P == 'rec':
+                w = 0.5 * np.array([-2-1j, 2-1j, 2+1j, -2+1j])
+            elif P == 'snow':
+                P = np.exp(2j * np.pi * np.arange(1, 13) / 12)
+                w = P * (1 + 0.2 * (-1) ** np.arange(1, 13)) / 1.4
+            elif P == 'pent':
+                w = 0.7 * np.exp(2j * np.pi * np.arange(1, 6) / 5)
+            elif P == 'hex':
+                w = 0.7 * np.exp(2j * np.pi * np.arange(1, 7) / 6)
+            elif P == 'kite':
+                w = 0.25 * np.array([0, 2 + 4j, 5j, -2 + 4j])
+            elif P == 'L':
+                w = 0.5 * (np.array([2, 2 + 1j, 1 + 1j, 1 + 2j, 2j, 0]) - 0.5 * (1 + 1j))
+            elif P == 'circleL':
+                P = [2, [2 + 1j, -1], 1 + 2j, 2j, 0]
+            elif P == 'C':
+                P = [-2-1j, 2-1j, 2+1j, [1+1j, -1.1], -1+1j, -2+1j]
+                P = [p * 0.25 if isinstance(p, (int, float, complex)) else [x * 0.25 for x in p] for p in P]
+            elif P == 'bullet':
+                P = [[0.5 * (1 - 0.5j), 0.5 * 0.6], 0.5 * (1 + 0.5j), 0.5 * (-1 + 0.5j), 0.5 * (-1 - 0.5j)]
+            elif P == 'iso':
+                w = (np.array([1+2j, 1+3j, 2j, 1j+1, 2+1j, 2, 3+1j, 3+2j]) - (1.5+1.5j)) / 1.8
+            else:
+                raise ValueError("Unsupported shape for P")
+        else:
+            raise TypeError("P must be an integer, string, or list")
+        
+        if not isinstance(P, list):
+            P = w.tolist()  # Convert to list format
+        
+        if randomcirc:
+            for k in range(len(P)):
+                r = 0.6 / np.random.rand()
+                P[k] = [P[k], r * (-1) ** (np.random.randn() > 0)]
+    
+    nw = len(P)
+    # corner points
+    w = np.array([p[0] if isinstance(p, list) else p for p in P])
+    if dtype == torch.float64:
+        cdtype = torch.complex128
+    elif dtype == torch.float32:
+        cdtype = torch.complex64
+    w = torch.tensor(w, dtype=cdtype, device=device)
+    ww = []  # Boundary points for plotting
+    pt = []
+    dw = torch.zeros(nw, dtype=dtype, device=device)  # distance to next corner
+    
+    for k in range(nw):
+        kn = (k + 1) % nw  # Index of the next corner
+        ww.append(w[k])
+        
+        if isinstance(P[k], list) and len(P[k]) > 1:        # Circular arc
+            r = P[k][1]                                     # radius of arc
+            a, b = w[k], w[kn]                              # endpoints of arc          
+            ab = abs(b - a)                                 # length of arc
+            theta = torch.arcsin(ab / (2 * r))              # half-angle of arc
+            c = a + r * torch.exp(1j * (np.pi/2 - theta)) * (b - a) / ab   # center of arc
+            dw[k] = 2 * theta * r                           # length of arc
+            pt.append(lambda t, a=a, b=b, c=c, r=r, ab=ab, theta=theta:
+                (c - r * torch.exp(1j * (np.pi/2 + t/r - theta)) * (b - a) / ab))       # parametric equation of arc
+            ww.extend(pt[k](torch.linspace(0, dw[k], 50, dtype=dtype, device=device)))  # points on arc              
+        else:                                               # Straight line segment
+            dw[k] = abs(w[kn] - w[k])                       # distance to next corner
+            pt.append(lambda t, a=w[k], b=w[kn], d=dw[k]: a + t * (b - a) / d)  # parametric equation of line
+    
+    ww.append(w[0])    
+    w = w.view(-1, 1)
+    ww = torch.tensor(ww, dtype=cdtype, device=device).view(-1, 1)
+
+    outward = torch.zeros(nw, dtype=cdtype, device=device)  # outward direction from corners
+    ang = torch.zeros(nw, dtype=dtype, device=device)       # angles of corners
+    for k in range(nw):
+        forward = pt[k](.001*dw[k]) - w[k,0]                # small step toward next corner
+        j = (k - 1) % nw
+        backward = pt[j](.999*dw[j]) - w[k,0]               # small step toward last corner
+        tmp = 1j * backward * torch.sqrt(-forward / backward)
+        outward[k] = tmp / abs(tmp)                         # unit outward normal vector from corner k
+
+        tmp = torch.arctan2(torch.imag(backward / forward), torch.real(backward / forward))
+        ang[k] = 2*np.pi - tmp % 2*np.pi                    # angle of corner k
+
+    x, y = ww.real.flatten(), ww.imag.flatten()
+    wr = torch.sort(x)[0]                               # real-axis limits
+    wi = torch.sort(y)[0]                               # imag-axis limits
+    scl = max(wr[-1]-wr[0], wi[-1]-wi[0]).item()        # characteristic length scale
+    
+    return P, w, ww, pt, dw, outward, ang, scl
+
+
+
+class Domain_2Dcomplex(Domain):
+    """
+    2D complex domain, support polygon or circular polygon with specified vertices, shapes, or random configurations.
+
+    Attributes
+    -------
+    Inherite all attributes from `Domain` class. Other specific attributes:
+
+    P : list of corners v and pairs [v r] to specify a circular
+            polygon: r = radius of curvature of arc from this v to the next
+    w : torch.Tensor of complex, shape (nw, 1)
+        corner vertices of the polygon in counterclockwise order
+    ww : torch.Tensor of complex, column vector
+        Boundary points for plotting
+    pt : list of callables, length nw
+        parametric equation of each segment of the boundary
+        pt[k](t: tensor) returns the point at distance t from w[k] to w[k+1]
+    dw : torch.Tensor, shape (nw,)
+        distance to next corner
+    outward : torch.Tensor of complex, shape (nw,)
+        outward direction from corners
+    ang : torch.Tensor, shape (nw,)
+        angles of corners in radians
+    scl : float
+        characteristic length scale of the domain
+    cdtype : torch.dtype
+        The data type of the complex numbers
+    """
+    def __init__(self, domain, P, dtype=torch.float32, device='cpu'):
+        """
+        Parameters
+        ----------
+        domain (list): 
+                The clousure of the domain of the problem, e.g. [[0,0], [1,1]] for the unit square
+        P : list, numpy.ndarray, int, or str
+                list of corners v and pairs [v r] to specify a circular
+                polygon: r = radius of curvature of arc from this v to the next
+                or numpy.ndarray of corners as complex numbers z = x+iy in counterclockwise
+                order to specify a polygon
+                or one of the following specified strings
+                'sqr'[square], 'rec'[tangle], 'snow'[flake], pent[agaon],
+                'hex'[agon], 'kite', 'L', 'circleL', 'C', 'bullet', 'iso'
+                or integer >= 3, the number of corners of a random polygon
+                or integer <= -3, -1 x number of corners of a random circular polygon]
+        dtype (torch.dtype):
+                The data type of the tensors
+        device (str):
+                The device of the tensors, e.g. 'cpu' or 'cuda'
+        """
+        self.P, self.w, self.ww, self.pt, self.dw, self.outward, self.ang, self.scl = generate_polygon(P, dtype, device)
+        self.cdtype = torch.complex128 if dtype == torch.float64 else torch.complex64
+        x, y = self.ww.real.flatten(), self.ww.imag.flatten()
+        # Calculate the area of the polygon using the shoelace formula
+        area = 0.5 * torch.abs(torch.dot(x, torch.roll(y, 1)) - torch.dot(y, torch.roll(x, 1)))
+        super().__init__(domain, True, area, dtype, device)
+
+    def is_inside(self, x, strict=True, radius=None):
+        """
+        Check if the point x is inside the domain for complex region.
+        Need to be implemented in the subclass for different regions.
+
+        Args
+        -----------------
+        x (tensor): 
+            The point to be checked, shape (N_pts, 2)
+        strict (bool):
+            Whether to exclude the boundary, only valid when `radius` is none.
+        radius : float, optional, default 0.
+            Contractions or expansions of the polygon.
+            The point is considered inside the polygon if it is within a distance of radius from the polygon.
+
+        Returns
+        -----------------
+        inside (tensor of bool): 
+                Whether the point is inside the domain, shape (N_pts, 1)
+        """
+        if radius is None:
+            radius = -1e-14 if strict else 0.
+        res = inpolygon(x[:,:1], x[:,1:], self.ww.real, self.ww.imag, radius=radius)
+        return torch.tensor(res, dtype=torch.bool, device=self.device).reshape(-1, 1)
+    
+    def clip(self, ax, img):
+        """
+        Covering or clipping the image.
+        To be implemented in the subclass.
+
+        Args
+        ----------------
+        ax (Axes):
+                The axes to plot the image
+        img (AxesImage):
+                The image to be clipped, e.g. the output of ax.imshow()
+        """
+        verts = torch.cat([self.ww.real, self.ww.imag], dim=1).cpu().numpy()[:-1]
+        polygon = Polygon(verts, closed=True, color='none', alpha=0.5)
+        ax.add_patch(polygon)
+        img.set_clip_path(polygon)        
+
+    def bndry_collo(self, grids, type='equidistant', corner=False, indexing = 'ij'):
+        """
+        Generate the boundary collocation points.
+
+        Args
+        -----------------
+        grids (int): 
+                The number of collocation points
+        type (str):
+                The type of collocation points, can be 'uniform', 'equidistant', 'corner-cluster', or 'random'
+                If type is 'uniform' or 'equidistant', the collocation points are uniformly distributed on the boundary.
+                    The number of collocation points will be exactly N.
+                If type is 'corner-cluster', the equidistant collocation points are generated first,
+                    and then additional collocation points are added clustered near the corners.
+                    The number of collocation points will be greater than N.
+        corner (bool): 
+                Whether to include the corner points
+        see method `int_collo` for the other arguments
+
+        Returns
+        -----------------
+        collo_bc (tensor): 
+                The boundary collocation points, shape (N_pts, 2)
+
+        References
+        ----------
+        [1] GOPAL A, TREFETHEN L N. 
+            Solving Laplace Problems with Corner Singularities via Rational Functions. 
+            SIAM Journal on Numerical Analysis, 2019, 57(5): 2074-2094. DOI:10.1137/19M125947X.
+        """
+        nw = len(self.P)                        # number of corners
+        dw = self.dw                            # distance to next corner
+        perimeter = dw.sum()                    # perimeter of the polygon
+        ns = torch.round(dw / perimeter * grids).to(torch.int)  # number of collocation points on each side
+
+        if type in {'uniform', 'equidistant'}:
+            ns[-1] = max(1, grids - ns[:-1].sum())      
+            Z = []                  # sample points on boundary
+            for k in range(nw):
+                nk = ns[k].item()               # number of collocation points on side k
+                # distances of sample points along each side
+                if corner:
+                    tt = torch.linspace(0, dw[k], nk + 1, dtype=self.dtype, device=self.device)[:-1]
+                else:
+                    tt = torch.linspace(0, dw[k], nk + 2, dtype=self.dtype, device=self.device)[1:-1]
+                Z.append(self.pt[k](tt))        # sample pts on side k
+            Z = torch.cat(Z, dim=0)             # concatenate all collocation points
+
+        elif type == 'corner-cluster':
+            Z = []
+            tt = [torch.tensor([], dtype=self.dtype, device=self.device) for _ in range(nw)]
+            start = 0 if corner else 1
+            for k in range(nw):
+                nk = ns[k].item()
+                sk = torch.sqrt(torch.arange(1, nk + 1, dtype=self.dtype, device=self.device)) - np.sqrt(nk)
+                bet = self.ang[k].item() / np.pi
+                sigma = np.sqrt(2 * (2 - bet) * bet) * np.pi  # sigma for clustering see [1, (3.2)]
+                dk = self.scl * torch.exp(sigma * sk)
+                tt[k] = torch.cat([tt[k], dk[dk < dw[k]]])  # add clustered pts near corner
+                tt[k] = torch.cat([tt[k], torch.linspace(0, dw[k], nk, dtype=self.dtype, device=self.device)[start:-1]])
+                j = (k - 1) % nw  # index of last corner
+                tt[j] = torch.cat([tt[j], dw[j] - dk[dk < dw[j]]])  # likewise in other direction
+                tt[j] = torch.cat([tt[j], dw[j] - torch.linspace(0, dw[j], nk, dtype=self.dtype, device=self.device)[start:-1]])
+
+            for k in range(nw):
+                tt[k] = torch.sort(torch.unique(tt[k]))[0]
+                Z.append(self.pt[k](tt[k]))
+            Z = torch.cat(Z, dim=0)
+            
+        elif type == 'random':
+            # TODO: random boundary collocation is under development
+            raise ValueError('Random boundary collocation is under development!')
+
+        else:
+            raise ValueError('Invalid collocation type!')
+
+        return torch.stack([Z.real, Z.imag], dim=1)
+
+    def poles(self, nkv):
+        """
+        Genertate poles that are exponential clustered near the corners.
+        The poles are used for the rational approximation of the solution.
+
+        Parameters
+        ----------
+        nkv : int or list of int
+            The number of poles for each corner.
+            If nk is an int, the same number of poles will be used for all corners.
+            If nk is a list, the number of poles for each corner will be used.
+
+        Returns
+        -------
+        poles : torch.Tensor, shape (N_poles, 2)
+            The poles in Cartesian coordinates, shape (N_poles, 2).
+        distance : torch.Tensor, shape (N_poles,)
+        """
+        nw = len(self.P)
+        if isinstance(nkv, int):
+            nkv = [nkv] * nw
+        elif isinstance(nkv, list) and len(nkv) == nw:
+            pass
+        else:
+            raise ValueError('Invalid number of poles!')
+        
+        pol = []                # poles of the rational approximation
+        d = []                  # distances from poles to their corners
+        for k in range(nw):
+            nk = nkv[k]  # no. of poles at this corner
+
+            # stronger clustering (greased lightning)
+            # poles clustered near corner with spaceing O(1/sqrt(nk))
+            sk = torch.sqrt(torch.arange(1, nk + 1).to(dtype=self.dtype, device=self.device)) - np.sqrt(nk)          
+            bet = self.ang[k] / np.pi
+            sig = torch.sqrt(2 * (2 - bet) * bet) * np.pi
+            dk = self.scl * torch.exp(sig * sk)
+            dk = dk[dk > 1e-15 * self.scl]                                      # remove poles too close to corner
+            polk = self.w[k] + self.outward[k] * dk                             # poles near this corner
+            ii = np.where(inpolygonc(polk[dk > 1e-13 * self.scl], self.ww))[0]  # work around inaccuracy
+            if len(ii) > 0:                                                     # don't allow poles in Omega
+                dk = dk[:ii[0] - 1]
+                polk = polk[:ii[0] - 1]
+            pol.append(polk)
+            d.append(dk)
+        poles = torch.cat(pol, dim=0)  # all poles
+        poles = torch.stack([poles.real, poles.imag], dim=1)  # convert to Cartesian coordinates
+        distance = torch.cat(d, dim=0)
+
+        return poles, distance

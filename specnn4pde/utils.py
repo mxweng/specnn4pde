@@ -1,4 +1,4 @@
-__all__ = ['pkg_system_info', 'convert2pdf', 'func_timer', 'timer',
+__all__ = ['pkg_system_info', 'convert2pdf', 'func_timer', 'timer', 'file_finder',
            ]
 
 import os
@@ -269,3 +269,29 @@ class timer:
         total_time = time.time() - self.start_time
         return print('Total time: %.3e s' % total_time)
     
+def file_finder(dir, ls = False, prefix = '', sort = 'time'):
+    """
+    This function lists files in a directory with a specific prefix and sorts them.
+    It can also display the files in a numbered list.
+
+    Parameters
+    ----------
+    dir : str
+        The directory to search for files.
+    ls : bool, optional
+        If True, display the files in a numbered list. Default is False.
+    prefix : str, optional
+        The prefix to filter files. Default is ''.
+    sort : str, optional
+        The sorting method. Can be 'name' or 'time'. Default is 'time'.
+    """
+    files = os.listdir(dir)
+    files = [f for f in files if f.startswith(prefix)]  # filter
+    if sort == 'name':
+        files.sort()
+    elif sort == 'time':
+        files.sort(key=lambda x: x[-16:-4])
+    if ls:
+        for i, item in enumerate(files):
+            print(i, item)
+    return files
