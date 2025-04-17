@@ -1654,7 +1654,7 @@ class Domain_2Dcomplex(Domain):
 
         return torch.stack([Z.real, Z.imag], dim=1)
 
-    def poles(self, nkv):
+    def poles(self, nkv, eps=1e-15):
         """
         Genertate poles that are exponential clustered near the corners.
         The poles are used for the rational approximation of the solution.
@@ -1665,12 +1665,14 @@ class Domain_2Dcomplex(Domain):
             The number of poles for each corner.
             If nk is an int, the same number of poles will be used for all corners.
             If nk is a list, the number of poles for each corner will be used.
+        eps : Remove the poles whose distance from the corner points is less than eps*self.scl
 
         Returns
         -------
         poles : torch.Tensor, shape (N_poles, 2)
             The poles in Cartesian coordinates, shape (N_poles, 2).
         distance : torch.Tensor, shape (N_poles,)
+        nkv : The number of poles for each corner.
         """
         nw = len(self.P)
         if isinstance(nkv, int):
@@ -1691,7 +1693,7 @@ class Domain_2Dcomplex(Domain):
             bet = self.ang[k] / np.pi
             sig = torch.sqrt(2 * (2 - bet) * bet) * np.pi
             dk = self.scl * torch.exp(sig * sk)
-            dk = dk[dk > 1e-15 * self.scl]                                      # remove poles too close to corner
+            dk = dk[dk > eps * self.scl]                                        # remove poles too close to corner
             polk = self.w[k] + self.outward[k] * dk                             # poles near this corner
             ii = np.where(inpolygonc(polk[dk > 1e-13 * self.scl], self.ww))[0]  # work around inaccuracy
             if len(ii) > 0:                                                     # don't allow poles in Omega
@@ -1699,8 +1701,9 @@ class Domain_2Dcomplex(Domain):
                 polk = polk[:ii[0] - 1]
             pol.append(polk)
             d.append(dk)
+            nkv[k] = len(dk)
         poles = torch.cat(pol, dim=0)  # all poles
         poles = torch.stack([poles.real, poles.imag], dim=1)  # convert to Cartesian coordinates
         distance = torch.cat(d, dim=0)
 
-        return poles, distance
+        return poles, distance, nkv
