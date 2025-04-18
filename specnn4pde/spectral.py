@@ -1,9 +1,3 @@
-__all__ = ['JacobiP', 'JacobiP_torch', 'Jacobi_Gauss', 'Jacobi_Gauss_Lobatto', 
-           'HermiteP', 'HermiteF', 'Hermite_Gauss', 'mapped_Jacobi_Gauss',
-           'glue1D', 'glue_pts_1D', 
-           'CosSin_decomposition', 'BesselEq_LG_mat'
-           ]
-
 """
 spectral.py
 
@@ -13,7 +7,29 @@ The implementation is mainly based on the book:
     Analysis and Applications. vol. 41 (Springer Science & Business 
     Media, 2011).
     https://link.springer.com/book/10.1007/978-3-540-71041-7
+
+Brief description:
+    - JacobiP: Evaluate the (orthonormal) Jacobi polynomial of a given order with specified parameters.
+    - JacobiP_torch: Torch implementation of JacobiP for GPU acceleration.
+    - Jacobi_Gauss: Compute the Gauss-Jacobi quadrature nodes, weights, and derivative matrix.
+    - Jacobi_Gauss_Lobatto: Compute the Gauss-Lobatto quadrature nodes, weights, and derivative matrix.
+    - HermiteP: Evaluate orthonormal Hermite polynomials using recurrence relations.
+    - HermiteF: Evaluate modified Hermite functions using recurrence relations.
+    - Hermite_Gauss: Generate Hermite-Gauss quadrature points and weights.
+    - mapped_Jacobi_Gauss: Compute mapped Jacobi-Gauss quadrature points, weights, and derivative matrix.
+    - glue1D: Glue differential matrices, Gauss points, and weights across multiple cells in 1D.
+    - glue_pts_1D: Glue collocation points across multiple cells in 1D.
+    - CosSin_decomposition: Perform Fourier decomposition of a function into cosine and sine components.
+    - BesselEq_LG_mat: Construct sparse matrices for Legendre-Galerkin approximation of Bessel equations.
+
+For more information, see the documentation of each function.
 """
+
+__all__ = ['JacobiP', 'JacobiP_torch', 'Jacobi_Gauss', 'Jacobi_Gauss_Lobatto', 
+           'HermiteP', 'HermiteF', 'Hermite_Gauss', 'mapped_Jacobi_Gauss',
+           'glue1D', 'glue_pts_1D', 
+           'CosSin_decomposition', 'BesselEq_LG_mat'
+           ]
 
 import numpy as np
 from scipy.special import roots_hermite, gamma

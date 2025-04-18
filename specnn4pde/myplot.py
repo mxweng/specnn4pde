@@ -1,7 +1,31 @@
+"""
+myplot.py
+
+This module customizes Matplotlib plots by setting titles, labels, axes, grid lines, ticks, and legends. 
+It allows detailed adjustments to the plot's style and layout.
+
+Brief description:
+    - show_colors: Display a list of colors as color blocks.
+    - cmaps: A collection of predefined colormaps.
+    - colors: A collection of custom color schemes.
+    - ax_config: Configure the axes of a Matplotlib plot.
+    - ax3d_config: Configure the 3D axes of a Matplotlib plot.
+    - zaxis_sci_formatter: Format the z-axis of a 3D plot using scientific notation.
+    - latex_render: Render LaTeX expressions in Matplotlib plots.
+    - colorbar_config: Configure the colorbar of a Matplotlib plot.
+    - inpolygon: Check if a point is inside a polygon.
+    - inpolygonc: Check if a point is inside a polygon.
+
+For more information, see the documentation of each function.
+"""
+
 __all__ = ['show_colors', 'cmaps', 'colors',
            'ax_config', 'ax3d_config', 'zaxis_sci_formatter', 
            'latex_render','colorbar_config', 
            'inpolygon', 'inpolygonc']
+
+import numpy as np
+"""
 
 import pkg_resources
 import scipy.io

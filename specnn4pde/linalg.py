@@ -1,3 +1,16 @@
+"""
+linalg.py
+
+This module implements some linear algebra algorithms using NumPy.
+
+Brief description:
+    - ROU_cholesky: Perform a rank-one update of the Cholesky decomposition of a matrix.
+    - Butcher_step: Perform a single step of a Runge-Kutta method using a Butcher tableau.
+    - Butcher_table: Store the Butcher tableau of a Runge-Kutta method.
+
+For more information, see the documentation of each function.
+"""
+
 __all__ = ['ROU_cholesky', 'Butcher_step', 'Butcher_table',
            ]
 

@@ -1,14 +1,20 @@
-__all__ = ['JacobiP_torch', 'BesselI', 'BesselK', 
-           ]
-
 """
 torch_special.py
 
 This module implements some special functions using PyTorch.
+
+Breif description:
+    - JacobiP_torch: Evaluate the Jacobi polynomial of order up to N with parameters alpha and beta at points x.
+    - BesselI: Evaluates the modified Bessel function of the first kind I_n(x).
+    - BesselK: Evaluates the modified Bessel function of the second kind K_n(x).
+
+For more information, see the documentation of each function.
 """
 
-import torch
+__all__ = ['JacobiP_torch', 'BesselI', 'BesselK', 
+           ]
 
+import torch
 
 def JacobiP_torch(x, alpha, beta, N):
     """

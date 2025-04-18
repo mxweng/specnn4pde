@@ -1,3 +1,26 @@
+"""
+npde.py
+
+Functions and classes for numerical partial differential equations (PDEs).
+
+Brief description:
+    - gradients: Compute gradients of scalar or vector functions up to a specified order.
+    - Jacobian: Compute the Jacobian matrix of a vector function.
+    - partial_derivative: Compute partial derivatives for vector-valued functions.
+    - partial_derivative_vector: Efficiently compute partial derivatives for vector-valued functions.
+    - meshgrid_to_matrix: Convert meshgrid points to a matrix format.
+    - gen_collo: Generate collocation points for PDE problems on regular domains.
+    - frequency_analysis: Perform frequency analysis of a function on a given domain.
+    - Domain: A class for defining rectangular domains and generating collocation points.
+    - Domain_circle: A class for defining circular domains and generating collocation points.
+    - Domain_2Dcomplex: A class for defining 2D complex domains (e.g., polygons) and generating collocation points.
+    - inpolygon: Check if points are inside a polygon.
+    - inpolygonc: Check if points are inside a polygon using complex coordinates.
+    - generate_polygon: Generate a polygon or circular polygon with specified vertices, shapes, or random configurations.
+
+For more information, see the documentation of each function or class.
+"""
+
 __all__ = ['gradients', 'Jacobian', 'partial_derivative', 'partial_derivative_vector', 
            'meshgrid_to_matrix', 'gen_collo', 'frequency_analysis',
            'Domain', 'Domain_circle', 'Domain_2Dcomplex'

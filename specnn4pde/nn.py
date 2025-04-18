@@ -1,3 +1,18 @@
+"""
+nn.py
+
+Contains classes for building neural networks.
+
+Breif description:
+    - setup_seed: Set the seed for reproducibility.
+    - seed_worker: Fix seed for DataLoaders for reproducibility.
+    - check_gpu_memory: Check the GPU memory usage.
+    - RFMNet: A neural network class that implements the random feature method (RFM) for solving PDEs.
+              https://global-sci.org/intro/article_detail/jml/21029.html
+
+For more information, see the documentation of each function.
+"""
+
 __all__ = ['setup_seed', 'seed_worker', 'check_gpu_memory',
               'RFMNet',
            ]

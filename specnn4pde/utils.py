@@ -1,3 +1,18 @@
+"""
+utils.py
+
+This module provides various utility functions for system information, file handling, and timing.
+
+Brief description:
+    - pkg_system_info: Display package versions, system information, and GPU details.
+    - convert2pdf: Convert images to PDF format and optionally merge them into a single PDF file.
+    - func_timer: A decorator to measure the execution time of a function.
+    - timer: A class for measuring elapsed time and recording lap times.
+    - file_finder: List and sort files in a directory with a specific prefix.
+
+For more information, see the documentation of each function or class.
+"""
+
 __all__ = ['pkg_system_info', 'convert2pdf', 'func_timer', 'timer', 'file_finder',
            ]
 
