@@ -48,7 +48,7 @@ def incremental_qr(Q, R, a_new):
 
     return Q_new, R_new
 
-def omp(A, b, max_atoms=10, tol=1e-6):
+def omp(A, b, max_atoms=10, res_tol=1e-14, corr_tol=1e-14):
     """
     Orthogonal Matching Pursuit using QR decomposition (incremental version).
 
@@ -56,7 +56,8 @@ def omp(A, b, max_atoms=10, tol=1e-6):
         A (torch.Tensor): Dictionary matrix of shape (m, n).
         b (torch.Tensor): Observation vector of shape (m,) or (m, 1).
         max_atoms (int): Maximum number of atoms to select.
-        tol (float): Tolerance for residual norm to stop early.
+        res_tol (float): Tolerance for residual norm to stop early.
+        corr_tol (float): Tolerance for correlation to stop early.
 
     Returns:
         x (torch.Tensor): Sparse solution vector of shape (n,).
@@ -69,7 +70,7 @@ def omp(A, b, max_atoms=10, tol=1e-6):
         >>> x_true = torch.zeros(basis).to(dtype=torch.float64, device=device)
         >>> x_true[torch.randperm(basis)[:5]] = torch.randn(5).to(dtype=torch.float64, device=device)
         >>> b = A @ x_true
-        >>> x_est, support = omp(A, b, max_atoms=500, tol=1e-14)
+        >>> x_est, support = omp(A, b, max_atoms=500)
         >>> print(f"Recover L2 error: {(A @ x_est - b).norm():.4e}")
         >>> print(f"Selected basis no.: {(x_est.abs() > 0).sum().item()}")
     """
@@ -77,12 +78,17 @@ def omp(A, b, max_atoms=10, tol=1e-6):
     b = b.view(-1)  # ensure shape (m,)
     residual = b.clone()
     support = []
+    norms = torch.norm(A, dim=0, keepdim=True)
+    norms = torch.where(norms > 0, norms, 1)
+    A_normalized = A / norms
 
     for i in range(max_atoms):
         # Step 1: Correlation
-        corr = torch.abs(A.T @ residual)
+        corr = torch.abs(A_normalized.T @ residual)
         corr[support] = -1  # mask already selected
         idx = torch.argmax(corr).item()
+        if corr[idx] < corr_tol:
+            break  # Early stopping
 
         # Step 2: Update support
         support.append(idx)
@@ -97,7 +103,7 @@ def omp(A, b, max_atoms=10, tol=1e-6):
 
         residual = b - A_support @ x_support
         # Early stopping
-        if torch.norm(residual) < tol:
+        if torch.norm(residual) < res_tol:
             break
 
     # Final sparse solution

@@ -24,9 +24,6 @@ __all__ = ['show_colors', 'cmaps', 'colors',
            'latex_render','colorbar_config', 
            'inpolygon', 'inpolygonc']
 
-import numpy as np
-"""
-
 import pkg_resources
 import scipy.io
 import numpy as np

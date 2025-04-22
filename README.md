@@ -21,7 +21,7 @@ When you install this library using pip, most dependencies will be automatically
 
 You can install PyTorch by following the instructions on the [official PyTorch website](https://pytorch.org/get-started/locally/). Please ensure that you select the correct installation command based on your operating system, package manager, Python version, and the specifications of your CUDA toolkit if you are planning to use PyTorch with GPU support.
 
-If you are not planning to use the `nn`, `sav`, and `npde` module, you do not need to install PyTorch.
+If you are not planning to use the `nn`, `sav`, `npde`, `torch_special`, and `torch_linalg` module, you do not need to install PyTorch.
 
 ## Installation
 
