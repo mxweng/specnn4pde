@@ -1,0 +1,10 @@
+GPUtil
+IPython
+matplotlib
+numpy
+pandas
+Pillow
+psutil
+PyPDF2>=3.0.0
+scipy
+sympy
