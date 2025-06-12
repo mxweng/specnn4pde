@@ -25,7 +25,6 @@ import sympy as sp
 import torch
 from torch import Tensor
 from torch.optim import Optimizer
-from torch.optim.optimizer import params_t, _use_grad_for_differentiable, _get_value, _capturable_doc, _differentiable_doc
 
 class ARSAV(Optimizer):
     r"""Implements Adaptive Relaxed Scalar Auxiliary Variable (ARSAV) algorithm.
@@ -82,7 +81,7 @@ class ARSAV(Optimizer):
     """
 
     def __init__(self,
-                 params: params_t, 
+                 params, 
                  init_loss: Tensor, 
                  lr: float, 
                  lr_min: float = 0.01, 
@@ -201,12 +200,12 @@ class NAG_ARSAV(Optimizer):
                                    if 0, it will be set as eta_sym which will be adapted throughout the iterations
         ODE_type (str, optional): the type of ODE 'fix_eta' or 'taylor' (default: 'taylor').
         ME_type (str, optional): the type of ME (string), 'PD' or 'PID' (default: 'PD').
-        {_capturable_doc}
-        {_differentiable_doc}
+        capturable (bool, optional): not implemented yet.
+        differentiable (bool, optional): not implemented yet.
     """
 
     def __init__(self,
-                 params: params_t, 
+                 params, 
                  lr: float, 
                  lr_min: float = 0.01, 
                  opL: str = 'trivial', 
@@ -328,7 +327,7 @@ class NAG_ARSAV(Optimizer):
                 lrs.append(state['lr'])
                 Ks.append(state['K'])
 
-    @_use_grad_for_differentiable
+    @torch.no_grad()
     def step(self, closure):
         """Performs a single optimization step.
 
@@ -431,8 +430,8 @@ def _single_tensor_NAG_ARSAV(params: List[Tensor],
             step = step_t
             ME_last = ME.clone()
         else:
-            step = _get_value(step_t)
-            ME_last = _get_value(ME)
+            step = step_t.item()
+            ME_last = ME.item()
 
         ME = float(coef['ME_v'](lr, gamma)) * torch.sum(v * v) + float(coef['ME_f'](lr, gamma)) * loss
         MEs[i].copy_(ME)
@@ -462,7 +461,7 @@ def _single_tensor_NAG_ARSAV(params: List[Tensor],
         r_tilde = r / (1 + K / ME)
         r_tildes[i].copy_(r_tilde)
        
-        m_indicator = _get_value(r / ME) if MSAV else 1
+        m_indicator = (r / ME).item() if MSAV else 1
         v = m_indicator * float(coef['v_v'](lr, gamma)) * v + r_tilde / ME * float(coef['v_g'](lr, gamma)) * g
         exp_avgs[i].copy_(v)
 
@@ -475,5 +474,5 @@ def _single_tensor_NAG_ARSAV(params: List[Tensor],
         else:
             raise ValueError("Invalid linear operator `opL`. Choose 'trivial' or 'diag_hessian'.")
         
-        savs.append(_get_value(r / ME))
+        savs.append((r / ME).item())
     return savs
