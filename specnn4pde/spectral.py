@@ -10,7 +10,6 @@ The implementation is mainly based on the book:
 
 Brief description:
     - JacobiP: Evaluate the (orthonormal) Jacobi polynomial of a given order with specified parameters.
-    - JacobiP_torch: Torch implementation of JacobiP for GPU acceleration.
     - Jacobi_Gauss: Compute the Gauss-Jacobi quadrature nodes, weights, and derivative matrix.
     - Jacobi_Gauss_Lobatto: Compute the Gauss-Lobatto quadrature nodes, weights, and derivative matrix.
     - HermiteP: Evaluate orthonormal Hermite polynomials using recurrence relations.
@@ -25,7 +24,7 @@ Brief description:
 For more information, see the documentation of each function.
 """
 
-__all__ = ['JacobiP', 'JacobiP_torch', 'Jacobi_Gauss', 'Jacobi_Gauss_Lobatto', 
+__all__ = ['JacobiP', 'Jacobi_Gauss', 'Jacobi_Gauss_Lobatto', 
            'HermiteP', 'HermiteF', 'Hermite_Gauss', 'mapped_Jacobi_Gauss',
            'glue1D', 'glue_pts_1D', 
            'CosSin_decomposition', 'BesselEq_LG_mat'

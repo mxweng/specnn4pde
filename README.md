@@ -7,7 +7,7 @@ SpecNN4PDE is an under development Python library for solving partial differenti
 - `utils`: A collection of utility functions for system and package information retrieval, time measurement, etc.
 <!-- -  -->
 - `nn`: Contains classes for building neural networks, including [random feature method (RFM)](https://global-sci.org/intro/article_detail/jml/21029.html) neural networks, etc.
-- `sav`: The [Scalar auxiliary variable (SAV)](https://www.sciencedirect.com/science/article/pii/S002199911730774X) optimizer and its variants.
+- `optim`: The [Scalar auxiliary variable (SAV)](https://www.sciencedirect.com/science/article/pii/S002199911730774X) based optimizer and its variants.
 - `npde`: Functions for solving partial differential equations, e.g., calculating the multivariate derivatives.
 - `torch_special`: A collection of PyTorch-based special functions, e.g., the modified Bessel function of the first and second kind.
 - `torch_linalg`: This module provides linear algebra utilities implemented with PyTorch.
@@ -17,11 +17,11 @@ This project is still in the early stages of development, and the API is subject
 
 ## Dependencies
 
-When you install this library using pip, most dependencies will be automatically handled. However, please note that the `nn`, `sav`, `npde`, `torch_special`, and `torch_linalg` module requires PyTorch, which needs to be installed separately.
+When you install this library using pip, most dependencies will be automatically handled. However, please note that the `nn`, `optim`, `npde`, `torch_special`, and `torch_linalg` module requires PyTorch, which needs to be installed separately.
 
 You can install PyTorch by following the instructions on the [official PyTorch website](https://pytorch.org/get-started/locally/). Please ensure that you select the correct installation command based on your operating system, package manager, Python version, and the specifications of your CUDA toolkit if you are planning to use PyTorch with GPU support.
 
-If you are not planning to use the `nn`, `sav`, `npde`, `torch_special`, and `torch_linalg` module, you do not need to install PyTorch.
+If you are not planning to use the `nn`, `optim`, `npde`, `torch_special`, and `torch_linalg` module, you do not need to install PyTorch.
 
 ## Installation
 

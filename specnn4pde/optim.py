@@ -182,7 +182,6 @@ class NAG_ARSAV(Optimizer):
 
     ..math::
 
-
     Args:
     ----------
         params (iterable): iterable of parameters to optimize or dicts defining parameter groups
@@ -274,7 +273,7 @@ class NAG_ARSAV(Optimizer):
         self.coef['theta_g'] = sp.lambdify((eta_sym, gamma_sym), sp.simplify(-eta_sym * kd))
         #################################################
 
-        defaults = dict(lr=lr, lr_min=lr_min, opL=opL, 
+        defaults = dict(lr=lr, lr_min=lr_min, opL=opL, savs_history=[],
                         nu=nu, rho=rho, beta=beta, gamma=gamma, adaptive=adaptive, MSAV=MSAV, ME_type=ME_type,
                         capturable=capturable, differentiable=differentiable)
         super(NAG_ARSAV, self).__init__(params, defaults)
@@ -293,7 +292,7 @@ class NAG_ARSAV(Optimizer):
                 s['step'] = torch.tensor(float(s['step']))
 
     def _init_group(self, group, params_with_grad, grads, exp_avgs, exp_avg_sqs, state_steps, 
-                    loss, MEs, r_tildes, Ks):
+                    loss, MEs, r_tildes, lrs, Ks):
         for p in group['params']:
             if p.grad is not None:
                 params_with_grad.append(p)
@@ -318,6 +317,7 @@ class NAG_ARSAV(Optimizer):
                     # modified energy (ME) and scalar auxilary variable (r)
                     state['ME'] = self.coef['ME_f'](group['lr'], group['gamma']) * loss
                     state['r_tilde'] = state['ME'].clone()
+                    state['lr'] = torch.tensor(float(group['lr']))
                     state['K'] = torch.zeros_like(loss, memory_format=torch.preserve_format)
 
                 exp_avgs.append(state['exp_avg'])
@@ -325,6 +325,7 @@ class NAG_ARSAV(Optimizer):
                 state_steps.append(state['step'])
                 MEs.append(state['ME'])
                 r_tildes.append(state['r_tilde'])
+                lrs.append(state['lr'])
                 Ks.append(state['K'])
 
     @_use_grad_for_differentiable
@@ -349,12 +350,13 @@ class NAG_ARSAV(Optimizer):
             state_steps = []
             MEs = []
             r_tildes = []
+            lrs = []
             Ks = []
 
             self._init_group(group, params_with_grad, grads, exp_avgs, exp_avg_sqs, state_steps, 
-                             loss, MEs, r_tildes, Ks)
+                             loss, MEs, r_tildes, lrs, Ks)
 
-            lr = _single_tensor_NAG_ARSAV(params_with_grad,
+            savs = _single_tensor_NAG_ARSAV(params_with_grad,
                                     grads,
                                     exp_avgs,
                                     exp_avg_sqs,
@@ -363,7 +365,7 @@ class NAG_ARSAV(Optimizer):
                                     MEs=MEs,
                                     r_tildes=r_tildes,
                                     Ks=Ks,
-                                    lr=group['lr'],
+                                    lrs=lrs,
                                     lr_min=group['lr_min'],
                                     opL=group['opL'],
                                     nu=group['nu'],
@@ -376,8 +378,8 @@ class NAG_ARSAV(Optimizer):
                                     coef=self.coef,
                                     capturable=group['capturable'],
                                     differentiable=group['differentiable'])
-            group['lr'] = lr
-            # _multi_tensor version is not implemented yet
+            group['savs_history'].append(savs)
+            # TODO: _multi_tensor version is not implemented yet
         return loss
 
 
@@ -392,7 +394,7 @@ def _single_tensor_NAG_ARSAV(params: List[Tensor],
                              r_tildes: List[Tensor],
                              Ks: List[Tensor],
                              *,
-                             lr: float,
+                             lrs: List[float],
                              lr_min: float,
                              opL: str,
                              nu: float,
@@ -405,7 +407,7 @@ def _single_tensor_NAG_ARSAV(params: List[Tensor],
                              coef: dict,
                              capturable: bool,
                              differentiable: bool):
-
+    savs = []
     for i, param in enumerate(params):
         g = grads[i]
         v = exp_avgs[i]
@@ -413,6 +415,7 @@ def _single_tensor_NAG_ARSAV(params: List[Tensor],
         step_t = state_steps[i]
         ME = MEs[i]
         r_tilde = r_tildes[i]
+        lr = lrs[i]
         K = Ks[i]
 
         # If compiling, the compiler will handle cudagraph checks, see note [torch.compile x capturable]
@@ -431,7 +434,7 @@ def _single_tensor_NAG_ARSAV(params: List[Tensor],
             step = _get_value(step_t)
             ME_last = _get_value(ME)
 
-        ME = float(coef['ME_v'](lr, gamma)) * torch.dot(v, v) + float(coef['ME_f'](lr, gamma)) * loss
+        ME = float(coef['ME_v'](lr, gamma)) * torch.sum(v * v) + float(coef['ME_f'](lr, gamma)) * loss
         MEs[i].copy_(ME)
 
         if ME - r_tilde > r_tilde * K / ME_last:
@@ -444,15 +447,17 @@ def _single_tensor_NAG_ARSAV(params: List[Tensor],
         if adaptive:
             indicator = r / ME
             if indicator < beta and lr > lr_min:
-                lr = max(indicator.item() * lr, lr_min)
+                lr = max(indicator.item() * lr, torch.tensor(float(lr_min)))
             else:
                 lr = rho * lr
+        lrs[i].copy_(lr)
+        # print(lrs[i])
 
         if ME_type == 'PID':
-            K = float(coef['K_v'](lr, gamma))*torch.dot(v, v) + float(coef['K_g'](lr, gamma))*torch.dot(g, g)
+            K = float(coef['K_v'](lr, gamma))*torch.sum(v * v) + float(coef['K_g'](lr, gamma))*torch.sum(g * g)
         elif ME_type == 'PD':
             tmp = float(coef['tmp_v'](lr, gamma)) * v + float(coef['tmp_g'](lr, gamma)) * g
-            K = float(coef['K_tmp'](lr, gamma))*torch.dot(tmp, tmp) + float(coef['K_g'](lr, gamma))*torch.dot(g, g)
+            K = float(coef['K_tmp'](lr, gamma))*torch.sum(tmp * tmp) + float(coef['K_g'](lr, gamma))*torch.sum(g * g)
         Ks[i].copy_(K)
         r_tilde = r / (1 + K / ME)
         r_tildes[i].copy_(r_tilde)
@@ -469,5 +474,6 @@ def _single_tensor_NAG_ARSAV(params: List[Tensor],
             pass
         else:
             raise ValueError("Invalid linear operator `opL`. Choose 'trivial' or 'diag_hessian'.")
-
-        return lr
+        
+        savs.append(_get_value(r / ME))
+    return savs
