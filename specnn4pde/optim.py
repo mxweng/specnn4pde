@@ -418,7 +418,7 @@ def _single_tensor_NAG_ARSAV(params: List[Tensor],
         K = Ks[i]
 
         # If compiling, the compiler will handle cudagraph checks, see note [torch.compile x capturable]
-        if not torch._utils.is_compiling() and capturable:
+        if capturable and not torch._utils.is_compiling():
             assert (
                 (param.is_cuda and step_t.is_cuda) or (param.is_xla and step_t.is_xla)
             ), "If capturable=True, params and state_steps must be CUDA or XLA tensors."
