@@ -1,4 +1,4 @@
-__all__ = ['ARSAV', 'NAG_ARSAV']
+__all__ = ['ARSAV', 'NAG_ARSAV', 'NAdam_RSAV']
 
 """
 sav.py
@@ -317,6 +317,7 @@ class NAG_ARSAV(Optimizer):
                     state['ME'] = self.coef['ME_f'](group['lr'], group['gamma']) * loss
                     state['r_tilde'] = state['ME'].clone()
                     state['lr'] = torch.tensor(float(group['lr']))
+                    # state['lr'] = torch.tensor(group['lr'], dtype=p.dtype, device=p.device)
                     state['K'] = torch.zeros_like(loss, memory_format=torch.preserve_format)
 
                 exp_avgs.append(state['exp_avg'])
@@ -467,6 +468,274 @@ def _single_tensor_NAG_ARSAV(params: List[Tensor],
 
         if opL == "trivial":
             update = float(coef['theta_v'](lr, gamma)) * v + r_tilde / ME * float(coef['theta_g'](lr, gamma)) * g
+            param.add_(update)
+        elif opL == "diag_hessian":
+            # TODO: to be implemented
+            pass
+        else:
+            raise ValueError("Invalid linear operator `opL`. Choose 'trivial' or 'diag_hessian'.")
+        
+        savs.append((r / ME).item())
+    return savs
+
+
+
+
+
+
+class NAdam_RSAV(Optimizer):
+    fr"""Combines the NAdam method with the
+        Relaxed Scalar Auxiliary Variable (RSAV) algorithm.
+
+    ..math::
+
+    Args:
+    ----------
+        params (iterable): iterable of parameters to optimize or dicts defining parameter groups
+        init_loss (Tensor): initial loss value
+        lr (float): initial step-size
+        lr_min (float, optional): not used, kept for compatibility
+                                  lower bound of step-size (default: 0.01)
+        opL (str, optional): linear operator for stabilization (default: 'trivial')
+                             options: 'trivial': zero operator, 'diag_hessian': diagonal of Hessian matrix of f(x)
+        nu (float, optional): relaxation constant which is less than 1 (default: 0.99)
+        beta1 (float, optional): coefficients used for computing running averages of gradient (default: 0.9)
+        beta2 (float, optional): coefficients used for computing running averages of squared gradient (default: 0.999)
+        eps (float, optional): term added to the denominator to improve numerical stability (default: 1e-8)
+        adaptive (bool, optional): whether to use adaptive step-size (default: True)
+        MSAV (bool, optional): whether to multiply momentum with the SAV indicator (default: False)
+        capturable (bool, optional): not implemented yet.
+        differentiable (bool, optional): not implemented yet.
+    """
+
+    def __init__(self,
+                 params, 
+                 lr: float, 
+                 lr_min: float = 0.01, 
+                 opL: str = 'trivial', 
+                 nu: float = 0.99, 
+                 beta1: float = 0.9,
+                 beta2: float = 0.999,
+                 eps: float = 1e-8,
+                 adaptive: bool = True,
+                 MSAV: bool = False,
+                 capturable: bool = False,
+                 differentiable: bool = False,
+                ):
+
+        #################################################
+        # build the symbolic expressions for update rules    
+        self.coef = {}
+        self.coef['ME_v'] = lambda eta, beta1: beta1**3 / 2 * eta
+        self.coef['ME_f'] = lambda eta, beta1: 2 - beta1
+        self.coef['tmp_v'] = lambda eta, beta1: eta * beta1
+        self.coef['tmp_g'] = lambda eta, beta1: -eta
+        self.coef['K_tmp'] = lambda eta, beta1: (1 - beta1) / eta
+        self.coef['K_g'] = lambda eta, beta1: eta
+
+        self.coef['v_v'] = lambda eta, beta1: beta1
+        self.coef['v_g'] = lambda eta, beta1: -1
+        self.coef['theta_v'] = lambda eta, beta1: eta * beta1
+        self.coef['theta_g'] = lambda eta, beta1: -eta
+        #################################################
+
+        defaults = dict(lr=lr, lr_min=lr_min, opL=opL, savs_history=[],
+                        nu=nu, beta1=beta1, beta2=beta2, eps=eps, adaptive=adaptive, MSAV=MSAV,
+                        capturable=capturable, differentiable=differentiable)
+        super(NAdam_RSAV, self).__init__(params, defaults)
+
+
+    def __setstate__(self, state):
+        super().__setstate__(state)
+        # code for checkpoint compatibility
+        for group in self.param_groups:
+            group.setdefault('capturable', False)
+            group.setdefault('differentiable', False)
+        state_values = list(self.state.values())
+        step_is_tensor = (len(state_values) != 0) and torch.is_tensor(state_values[0]['step'])
+        if not step_is_tensor:
+            for s in state_values:
+                s['step'] = torch.tensor(float(s['step']))
+
+    def _init_group(self, group, params_with_grad, grads, exp_avgs, exp_avg_sqs, state_steps, 
+                    loss, MEs, r_tildes, init_lrs, lrs, Ks):
+        for p in group['params']:
+            if p.grad is not None:
+                params_with_grad.append(p)
+                if p.grad.is_sparse:
+                    raise RuntimeError('NAdam does not support sparse gradients')
+                grads.append(p.grad)
+
+                state = self.state[p]
+                # Lazy state initialization
+                if len(state) == 0:
+                    # note(crcrpar): [special device hosting for step]
+                    # Deliberately host `step` and `mu_product` on CPU if capturable is False.
+                    # This is because kernel launches are costly on CUDA and XLA.
+                    state['step'] = (
+                        torch.zeros((), dtype=torch.float, device=p.device)
+                        if group['capturable'] else torch.tensor(0.)
+                    )
+                    # Exponential moving average of gradient values
+                    state['exp_avg'] = torch.zeros_like(p, memory_format=torch.preserve_format)
+                    # Exponential moving average of squared gradient values
+                    # state['exp_avg_sq'] = torch.zeros_like(p, memory_format=torch.preserve_format)
+                    state['exp_avg_sq'] = torch.tensor(0, dtype=p.dtype, device=p.device)
+                    # modified energy (ME) and scalar auxilary variable (r)
+                    state['ME'] = self.coef['ME_f'](group['lr'], group['beta1']) * loss
+                    state['r_tilde'] = state['ME'].clone()
+                    # state['init_lr'] = torch.tensor(float(group['lr']))
+                    # state['lr'] = torch.tensor(float(group['lr']))
+                    state['init_lr'] = torch.tensor(group['lr'], dtype=p.dtype, device=p.device)
+                    state['lr'] = torch.tensor(group['lr'], dtype=p.dtype, device=p.device)
+                    state['K'] = torch.zeros_like(loss, memory_format=torch.preserve_format)
+
+                exp_avgs.append(state['exp_avg'])
+                exp_avg_sqs.append(state['exp_avg_sq'])
+                state_steps.append(state['step'])
+                MEs.append(state['ME'])
+                r_tildes.append(state['r_tilde'])
+                init_lrs.append(state['init_lr'])
+                lrs.append(state['lr'])
+                Ks.append(state['K'])
+
+    @torch.no_grad()
+    def step(self, closure):
+        """Performs a single optimization step.
+
+        Args:
+            closure (Callable): A closure that reevaluates the model
+                and returns the loss.
+        """
+        self._cuda_graph_capture_health_check()
+
+        # Make sure the closure is always called with grad enabled
+        closure = torch.enable_grad()(closure)
+        loss = closure()
+
+        for group in self.param_groups:
+            params_with_grad = []
+            grads = []
+            exp_avgs = []
+            exp_avg_sqs = []
+            state_steps = []
+            MEs = []
+            r_tildes = []
+            init_lrs = []
+            lrs = []
+            Ks = []
+
+            self._init_group(group, params_with_grad, grads, exp_avgs, exp_avg_sqs, state_steps, 
+                             loss, MEs, r_tildes, init_lrs, lrs, Ks)
+
+            savs = _single_tensor_NAdam_RSAV(params_with_grad,
+                                    grads,
+                                    exp_avgs,
+                                    exp_avg_sqs,
+                                    state_steps,
+                                    loss=loss,
+                                    MEs=MEs,
+                                    r_tildes=r_tildes,
+                                    Ks=Ks,
+                                    init_lrs=init_lrs,
+                                    lrs=lrs,
+                                    lr_min=group['lr_min'],
+                                    opL=group['opL'],
+                                    nu=group['nu'],
+                                    beta1=group['beta1'],
+                                    beta2=group['beta2'],
+                                    eps=group['eps'],
+                                    adaptive=group['adaptive'],
+                                    MSAV=group['MSAV'],
+                                    coef=self.coef,
+                                    capturable=group['capturable'],
+                                    differentiable=group['differentiable'])
+            group['savs_history'].append(savs)
+            # TODO: _multi_tensor version is not implemented yet
+        return loss
+
+
+
+def _single_tensor_NAdam_RSAV(params: List[Tensor],
+                             grads: List[Tensor],
+                             exp_avgs: List[Tensor],
+                             exp_avg_sqs: List[Tensor],
+                             state_steps: List[Tensor],
+                             loss: Optional[Tensor],
+                             MEs: List[Tensor],
+                             r_tildes: List[Tensor],
+                             Ks: List[Tensor],
+                             *,
+                             init_lrs: List[float],
+                             lrs: List[float],
+                             lr_min: float,
+                             opL: str,
+                             nu: float,
+                             beta1: float,
+                             beta2: float,
+                             eps: float,
+                             adaptive: bool,
+                             MSAV: bool,
+                             coef: dict,
+                             capturable: bool,
+                             differentiable: bool):
+    savs = []
+    for i, param in enumerate(params):
+        g = grads[i]
+        v = exp_avgs[i]
+        n = exp_avg_sqs[i]
+        step_t = state_steps[i]
+        ME = MEs[i]
+        r_tilde = r_tildes[i]
+        init_lr = init_lrs[i]
+        lr = lrs[i]
+        K = Ks[i]
+
+        # If compiling, the compiler will handle cudagraph checks, see note [torch.compile x capturable]
+        if capturable and not torch._utils.is_compiling():
+            assert (
+                (param.is_cuda and step_t.is_cuda) or (param.is_xla and step_t.is_xla)
+            ), "If capturable=True, params and state_steps must be CUDA or XLA tensors."
+
+        # update step
+        step_t += 1
+
+        if capturable:
+            step = step_t
+            ME_last = ME.clone()
+        else:
+            step = step_t.item()
+            ME_last = ME.item()
+
+        ME = float(coef['ME_v'](lr, beta1)) * torch.sum(v * v) + float(coef['ME_f'](lr, beta1)) * loss
+        MEs[i].copy_(ME)
+
+        if ME - r_tilde > r_tilde * K / ME_last:
+            xi = 1 - (nu * r_tilde * K / ME_last / (ME - r_tilde)).item()
+            xi = max(xi, 0)
+        else:
+            xi = 0
+        r = xi * r_tilde + (1 - xi) * ME
+
+        if adaptive:
+            n = beta2 * n + (1 - beta2) * torch.sum(g * g)
+            exp_avg_sqs[i].copy_(n)
+            hat_n = n / (1 - beta2**(step))
+            lr = init_lr / (torch.sqrt(hat_n) + eps) * (1 - beta1) / (1 - beta1**(step))
+        lrs[i].copy_(lr)
+
+        tmp = float(coef['tmp_v'](lr, beta1)) * v + float(coef['tmp_g'](lr, beta1)) * g
+        K = float(coef['K_tmp'](lr, beta1))*torch.sum(tmp * tmp) + float(coef['K_g'](lr, beta1))*torch.sum(g * g)
+        Ks[i].copy_(K)
+        r_tilde = r / (1 + K / ME)
+        r_tildes[i].copy_(r_tilde)
+
+        m_indicator = (r / ME).item() if MSAV else 1
+        v = m_indicator * float(coef['v_v'](lr, beta1)) * v + r_tilde / ME * float(coef['v_g'](lr, beta1)) * g
+        exp_avgs[i].copy_(v)
+
+        if opL == "trivial":
+            update = float(coef['theta_v'](lr, beta1)) * v + r_tilde / ME * float(coef['theta_g'](lr, beta1)) * g
             param.add_(update)
         elif opL == "diag_hessian":
             # TODO: to be implemented

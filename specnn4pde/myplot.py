@@ -19,7 +19,7 @@ Brief description:
 For more information, see the documentation of each function.
 """
 
-__all__ = ['show_colors', 'cmaps', 'colors',
+__all__ = ['show_colors', 'cmaps', 'colors', 'markers', 'markersize',
            'ax_config', 'ax3d_config', 'zaxis_sci_formatter', 
            'latex_render','colorbar_config', 
            'inpolygon', 'inpolygonc']
@@ -78,6 +78,10 @@ colors.tikz = [(r/255, g/255, b/255) for r, g, b in [(0,0,204),(0,153,0),(204,10
 colors.cartoon1 = [(r/255, g/255, b/255) for r, g, b in [(14,62,135),(52,108,172),(222,234,234),(247,228,116),(216,178,58)]]
 colors.cartoon2 = [(r/255, g/255, b/255) for r, g, b in [(70,120,142),(120,183,201),(246,224,147),(151,179,25),(229,139,123)]]
 colors.cartoon3 = [(r/255, g/255, b/255) for r, g, b in [(5, 89,18),(20,130,107),(163,209,205),(250,222,188),(217,149,74),(115,57,23)]]
+
+
+markers = ['^', 's', 'D', 'p', 'o', '.', 'x', '+']
+markersize = [4.5, 3.6, 3.5, 4.4, 4, 8, 4, 6]
 
 
 def show_colors(colors):
