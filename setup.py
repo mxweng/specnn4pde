@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='specnn4pde',  # package name
-    version='0.2.1',  # version
+    version='0.2.2',  # version
     author='MXWeng',  # author name
     author_email='2431141461@qq.com',  # author email
     description='Solving partial differential equations using spectral methods and neural networks.',  # short description
