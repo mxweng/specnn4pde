@@ -980,7 +980,7 @@ def _single_tensor_NAdam_ERSAV(params: List[Tensor],
         mask = (ME - r_tilde) > (r_tilde * K / ME_last)
         xi = torch.zeros_like(ME)
         xi[mask] = 1 - nu * r_tilde[mask] * K[mask] / ME_last[mask] / (ME[mask] - r_tilde[mask])
-        xi = np.maximum(xi, 0)
+        xi = torch.maximum(xi, torch.tensor(0.))
         r = xi * r_tilde + (1 - xi) * ME
 
         if adaptive:
