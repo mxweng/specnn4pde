@@ -166,7 +166,7 @@ class RFMNet(nn.Module):
     References
     ----------
     1. 2022, Jingrun Chen, Xurong Chi, Weinan E, Zhouwang Yang, JML.
-        https://global-sci.org/intro/article_detail/jml/21029.html
+        https://doi.org/10.4208/jml.220726
         Bridging Traditional and Machine Learning-Based Algorithms for Solving PDEs: The Random Feature Method.
     """
     def __init__(self, X_n, R_n, d = 1, seed = 0, J_n = 50, R = 1, glb_num = 0, trunc_func = 'psi_b', active_func = torch.tanh, device='cpu', dtype=torch.float64):

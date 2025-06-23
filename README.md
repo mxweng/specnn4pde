@@ -6,8 +6,8 @@ SpecNN4PDE is an under development Python library for solving partial differenti
 - `myplot`: This module customizes Matplotlib plots by setting titles, labels, axes, grid lines, ticks, and legends. It allows detailed adjustments to the plot's style and layout.
 - `utils`: A collection of utility functions for system and package information retrieval, time measurement, etc.
 <!-- -  -->
-- `nn`: Contains classes for building neural networks, including [random feature method (RFM)](https://global-sci.org/intro/article_detail/jml/21029.html) neural networks, etc.
-- `optim`: The [Scalar auxiliary variable (SAV)](https://www.sciencedirect.com/science/article/pii/S002199911730774X) based optimizer and its variants.
+- `nn`: Contains classes for building neural networks, including [Random Feature Method (RFM)](https://doi.org/10.4208/jml.220726) neural networks, etc.
+- `optim`: The [Scalar Auxiliary Variable (SAV)](https://www.sciencedirect.com/science/article/pii/S002199911730774X) based optimizer and its variants.
 - `npde`: Functions for solving partial differential equations, e.g., calculating the multivariate derivatives.
 - `torch_special`: A collection of PyTorch-based special functions, e.g., the modified Bessel function of the first and second kind.
 - `torch_linalg`: This module provides linear algebra utilities implemented with PyTorch.
