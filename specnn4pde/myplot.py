@@ -22,10 +22,11 @@ For more information, see the documentation of each function.
 __all__ = ['show_colors', 'cmaps', 'colors', 'markers', 'markersize',
            'ax_config', 'ax3d_config', 'zaxis_sci_formatter', 
            'latex_render','colorbar_config', 
-           'inpolygon', 'inpolygonc']
+           'inpolygon', 'inpolygonc', 'Mean_CI']
 
 import pkg_resources
 import scipy.io
+from scipy.stats import norm
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
@@ -578,3 +579,40 @@ def inpolygonc(zq, zv, radius=0.):
         True if the point is inside the polygon, False otherwise.
     """
     return inpolygon(zq.real, zq.imag, zv.real, zv.imag, radius=radius)
+
+
+def Mean_CI(results_list, confidence=0.90):
+    """
+    Compute the mean curve and confidence interval for each epoch from multiple experiments.
+
+    Parameters
+    ----------
+    results_list : np.ndarray
+        A numpy array of shape [n_experiments, n_epochs], where each row is the metric curve from one experiment.
+    confidence : float
+        Confidence level for the interval (e.g., 0.90 for 90% confidence interval).
+
+    Returns
+    -------
+    mean : np.ndarray
+        The mean value at each epoch, shape [n_epochs].
+    ci : np.ndarray
+        The confidence interval (half-width) at each epoch, shape [n_epochs].
+        The confidence band is [mean - ci, mean + ci].
+    
+    Example
+    -------
+    >>> mean, ci = Mean_CI(results_list, confidence=0.90)
+    >>> epochs = np.arange(1, len(mean)+1)
+    >>> plt.plot(epochs, mean)
+    >>> plt.fill_between(epochs, mean - ci, mean + ci, alpha=0.2)
+    """
+
+    n = results_list.shape[0]
+    mean = results_list.mean(axis=0)
+    std = results_list.std(axis=0, ddof=1)
+    stderr = std / np.sqrt(n)
+    # Two-sided z-score for given confidence
+    z = norm.ppf(0.5 + confidence / 2)
+    ci = z * stderr
+    return mean, ci

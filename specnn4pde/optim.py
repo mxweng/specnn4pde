@@ -174,7 +174,6 @@ class ARSAV(Optimizer):
 
 
 
-
 class NAG_ARSAV(Optimizer):
     fr"""Combines the Nesterov Accelerated Gradient (NAG) method with the
         Adaptive Relaxed Scalar Auxiliary Variable (ARSAV) algorithm.
@@ -311,6 +310,7 @@ class NAG_ARSAV(Optimizer):
                     )
                     # Exponential moving average of gradient values
                     state['exp_avg'] = torch.zeros_like(p, memory_format=torch.preserve_format)
+                    # state['exp_avg'] = torch.clone(- float(group['lr']) * p).detach()
                     # Exponential moving average of squared gradient values
                     state['exp_avg_sq'] = torch.zeros_like(p, memory_format=torch.preserve_format)
                     # modified energy (ME) and scalar auxilary variable (r)
@@ -381,6 +381,7 @@ class NAG_ARSAV(Optimizer):
             group['savs_history'].append(savs)
             # TODO: _multi_tensor version is not implemented yet
         return loss
+
 
 
 
@@ -479,6 +480,360 @@ def _single_tensor_NAG_ARSAV(params: List[Tensor],
     return savs
 
 
+
+
+
+class NAG_ARSAV_batch(Optimizer):
+    fr"""Combines the Nesterov Accelerated Gradient (NAG) method with the
+        Adaptive Relaxed Scalar Auxiliary Variable (ARSAV) algorithm.
+
+    ..math::
+
+    Args:
+    ----------
+        params (iterable): iterable of parameters to optimize or dicts defining parameter groups
+        init_loss (Tensor): initial loss value
+        lr (float): initial step-size
+        lr_min (float, optional): lower bound of step-size (default: 0.001)
+        opL (str, optional): linear operator for stabilization (default: 'trivial')
+                             options: 'trivial': zero operator, 'diag_hessian': diagonal of Hessian matrix of f(x)
+        nu (float, optional): relaxation constant which is less than 1 (default: 0.999)
+        rho (float, optional): adaptive constant which is greater than 1 (default: 1.1)
+        beta (float, optional): threshold for the adaptive indicator (default: 0.9)
+        gamma (float, optional): moment running average coefficient (default: 0.9)
+        adaptive (bool, optional): whether to use adaptive step-size (default: True)
+        MSAV (bool, optional): whether to multiply momentum with the SAV indicator (default: False)
+        ODE_eta (float, optional): the constant eta in the ODE system
+                                   if None, it will be set as initial time step eta and fixed
+                                   if 0, it will be set as eta_sym which will be adapted throughout the iterations
+        ODE_type (str, optional): the type of ODE 'fix_eta' or 'taylor' (default: 'fix_eta').
+        ME_type (str, optional): the type of ME (string), 'PD' or 'PID' (default: 'PD').
+        capturable (bool, optional): not implemented yet.
+        differentiable (bool, optional): not implemented yet.
+    """
+
+    def __init__(self,
+                 params, 
+                 lr: float, 
+                 lr_min: float = 0.001, 
+                 opL: str = 'trivial', 
+                 nu: float = 0.999, 
+                 rho: float = 1.1, 
+                 beta: float = 0.9,
+                 gamma: float = 0.9, 
+                 adaptive: bool = True,
+                 MSAV: bool = False,
+                 ODE_eta: float = 0,
+                 ODE_type: str = 'fix_eta',
+                 ME_type: str = 'PD',
+                 capturable: bool = False,
+                 differentiable: bool = False,
+                ):
+
+        #################################################
+        # build the symbolic expressions for update rules    
+        eta_sym, gamma_sym = sp.symbols('eta gamma')
+
+        if ODE_eta is None:
+            eta_0 = lr
+        elif ODE_eta == 0:
+            eta_0 = eta_sym
+        else:
+            eta_0 = ODE_eta
+
+        if ODE_type == 'taylor':
+            a = 2*(1-gamma_sym)/eta_0/(1+gamma_sym)
+            kp = 2/eta_0/(1+gamma_sym)
+            kd = 2*gamma_sym/(1+gamma_sym)
+        elif ODE_type == 'fix_eta':
+            a = (1-gamma_sym)/eta_0/gamma_sym
+            kp = 1/eta_0/gamma_sym
+            kd = 1
+
+        self.coef = {}
+        if ME_type == 'PID':
+            # factor_v = 1
+            # factor_ME = 1
+            factor_v = gamma_sym * eta_0 / (2 * gamma_sym**2 - gamma_sym + 1)
+            factor_ME = 1
+            # factor_v = eta_0 / gamma_sym
+            # factor_ME = eta_0 * gamma_sym
+
+            self.coef['ME_v'] = sp.lambdify((eta_sym, gamma_sym), sp.simplify(factor_ME / factor_v**2 / 2))
+            self.coef['ME_f'] = sp.lambdify((eta_sym, gamma_sym), sp.simplify((kp - kd * a) * factor_ME))
+            self.coef['K_v'] = sp.lambdify((eta_sym, gamma_sym), sp.simplify(eta_sym * a * factor_ME / factor_v**2))
+            self.coef['K_g'] = sp.lambdify((eta_sym, gamma_sym), sp.simplify(eta_sym * (kp - kd * a) * kd * factor_ME))
+        elif ME_type == 'PD':
+            factor_v = eta_0 / gamma_sym
+            factor_ME = eta_0 * gamma_sym
+
+            self.coef['ME_v'] = sp.lambdify((eta_sym, gamma_sym), sp.simplify(factor_ME / factor_v**2 / 2))
+            self.coef['ME_f'] = sp.lambdify((eta_sym, gamma_sym), sp.simplify((kp + kd * a) * factor_ME))
+            self.coef['tmp_v'] = sp.lambdify((eta_sym, gamma_sym), sp.simplify(1 / factor_v * eta_sym))
+            self.coef['tmp_g'] = sp.lambdify((eta_sym, gamma_sym), sp.simplify(-kd * eta_sym))
+            self.coef['K_tmp'] = sp.lambdify((eta_sym, gamma_sym), sp.simplify(a * factor_ME / eta_sym))
+            self.coef['K_g'] = sp.lambdify((eta_sym, gamma_sym), sp.simplify(eta_sym * kd * kp * factor_ME))
+
+        self.coef['v_v'] = sp.lambdify((eta_sym, gamma_sym), sp.simplify(1 / (1 + eta_sym * a)))
+        self.coef['v_g'] = sp.lambdify((eta_sym, gamma_sym), sp.simplify(-eta_sym * (kp - a * kd) * factor_v / (1 + eta_sym * a)))
+        self.coef['theta_v'] = sp.lambdify((eta_sym, gamma_sym), sp.simplify(eta_sym / factor_v))
+        self.coef['theta_g'] = sp.lambdify((eta_sym, gamma_sym), sp.simplify(-eta_sym * kd))
+        #################################################
+
+        defaults = dict(lr=lr, lr_min=lr_min, opL=opL, savs_history=[],
+                        nu=nu, rho=rho, beta=beta, gamma=gamma, adaptive=adaptive, MSAV=MSAV, ME_type=ME_type,
+                        capturable=capturable, differentiable=differentiable)
+        super(NAG_ARSAV_batch, self).__init__(params, defaults)
+
+
+    def __setstate__(self, state):
+        super().__setstate__(state)
+        # code for checkpoint compatibility
+        for group in self.param_groups:
+            group.setdefault('capturable', False)
+            group.setdefault('differentiable', False)
+        state_values = list(self.state.values())
+        step_is_tensor = (len(state_values) != 0) and torch.is_tensor(state_values[0]['step'])
+        if not step_is_tensor:
+            for s in state_values:
+                s['step'] = torch.tensor(float(s['step']))
+
+    def _init_group(self, group, params_with_grad, grads, exp_avgs, exp_avg_sqs, state_steps, 
+                    epoch_delta_params, epoch_sum_exp_avgs, epoch_sum_losses,
+                    loss, MEs, r_tildes, lrs, Ks):
+        for p in group['params']:
+            if p.grad is not None:
+                params_with_grad.append(p)
+                if p.grad.is_sparse:
+                    raise RuntimeError('NAdam does not support sparse gradients')
+                grads.append(p.grad)
+
+                state = self.state[p]
+                # Lazy state initialization
+                if len(state) == 0:
+                    # note(crcrpar): [special device hosting for step]
+                    # Deliberately host `step` and `mu_product` on CPU if capturable is False.
+                    # This is because kernel launches are costly on CUDA and XLA.
+                    state['step'] = (
+                        torch.zeros((), dtype=torch.float, device=p.device)
+                        if group['capturable'] else torch.tensor(0.)
+                    )
+                    # Exponential moving average of gradient values
+                    state['exp_avg'] = torch.zeros_like(p, memory_format=torch.preserve_format)
+                    # Exponential moving average of squared gradient values
+                    state['exp_avg_sq'] = torch.zeros_like(p, memory_format=torch.preserve_format)
+
+                    # save the info of the epoch for SAV update
+                    state['epoch_delta_param'] = torch.zeros_like(p, memory_format=torch.preserve_format)
+                    state['epoch_sum_exp_avg'] = torch.zeros_like(p, memory_format=torch.preserve_format)
+                    state['epoch_sum_loss'] = torch.zeros_like(loss, memory_format=torch.preserve_format)
+
+                    # modified energy (ME) and scalar auxilary variable (r)
+                    state['ME'] = torch.zeros_like(loss, memory_format=torch.preserve_format)   # if it converge to 0, may lead to error!!!!!!
+                    state['r_tilde'] = torch.zeros_like(loss, memory_format=torch.preserve_format)
+                    state['lr'] = torch.tensor(float(group['lr']))
+                    # state['lr'] = torch.tensor(group['lr'], dtype=p.dtype, device=p.device)
+                    state['K'] = torch.zeros_like(loss, memory_format=torch.preserve_format)
+
+                exp_avgs.append(state['exp_avg'])
+                exp_avg_sqs.append(state['exp_avg_sq'])
+                state_steps.append(state['step'])
+                epoch_delta_params.append(state['epoch_delta_param'])
+                epoch_sum_exp_avgs.append(state['epoch_sum_exp_avg'])
+                epoch_sum_losses.append(state['epoch_sum_loss'])
+                MEs.append(state['ME'])
+                r_tildes.append(state['r_tilde'])
+                lrs.append(state['lr'])
+                Ks.append(state['K'])
+
+    @torch.no_grad()
+    def step(self, closure, final_batch: bool = False):
+        """Performs a single optimization step.
+
+        Args:
+            closure (Callable): A closure that reevaluates the model
+                and returns the loss.
+            final_batch (bool): If True, the step is performed at the end of an epoch,
+                SAV will be updated with the current loss, and the history of SAVs will be cleared.
+        """
+        self._cuda_graph_capture_health_check()
+
+        # Make sure the closure is always called with grad enabled
+        closure = torch.enable_grad()(closure)
+        loss = closure()
+
+        for group in self.param_groups:
+            params_with_grad = []
+            grads = []
+            exp_avgs = []
+            exp_avg_sqs = []
+            state_steps = []
+            epoch_delta_params = []
+            epoch_sum_exp_avgs = []
+            epoch_sum_losses = []
+            MEs = []
+            r_tildes = []
+            lrs = []
+            Ks = []
+
+            self._init_group(group, params_with_grad, grads, exp_avgs, exp_avg_sqs, state_steps, 
+                             epoch_delta_params, epoch_sum_exp_avgs, epoch_sum_losses,
+                             loss, MEs, r_tildes, lrs, Ks)
+
+            _single_tensor_NAG_ARSAV_batch(params_with_grad,
+                                    grads,
+                                    exp_avgs,
+                                    exp_avg_sqs,
+                                    state_steps,
+                                    epoch_delta_params=epoch_delta_params,
+                                    epoch_sum_exp_avgs=epoch_sum_exp_avgs,
+                                    epoch_sum_losses=epoch_sum_losses,
+                                    loss=loss,
+                                    MEs=MEs,
+                                    r_tildes=r_tildes,
+                                    Ks=Ks,
+                                    lrs=lrs,
+                                    lr_min=group['lr_min'],
+                                    opL=group['opL'],
+                                    nu=group['nu'],
+                                    rho=group['rho'],
+                                    beta=group['beta'],
+                                    gamma=group['gamma'],
+                                    adaptive=group['adaptive'],
+                                    MSAV=group['MSAV'],
+                                    ME_type=group['ME_type'],
+                                    coef=self.coef,
+                                    final_batch=final_batch,
+                                    capturable=group['capturable'],
+                                    differentiable=group['differentiable'])
+            
+            # TODO: _multi_tensor version is not implemented yet
+        return loss
+
+
+
+
+
+def _single_tensor_NAG_ARSAV_batch(params: List[Tensor],
+                             grads: List[Tensor],
+                             exp_avgs: List[Tensor],
+                             exp_avg_sqs: List[Tensor],
+                             state_steps: List[Tensor],
+                             epoch_delta_params: List[Tensor],
+                             epoch_sum_exp_avgs: List[Tensor],
+                             epoch_sum_losses: List[Tensor],
+                             loss: Optional[Tensor],
+                             MEs: List[Tensor],
+                             r_tildes: List[Tensor],
+                             Ks: List[Tensor],
+                             *,
+                             lrs: List[float],
+                             lr_min: float,
+                             opL: str,
+                             nu: float,
+                             rho: float,
+                             beta: float,
+                             gamma: float,
+                             adaptive: bool,
+                             MSAV: bool,
+                             ME_type: str,
+                             coef: dict,
+                             final_batch: bool = False,
+                             capturable: bool,
+                             differentiable: bool):
+    # Apply NAG
+    for i, param in enumerate(params):
+        g = grads[i]
+        v = exp_avgs[i]
+        exp_avg_sq = exp_avg_sqs[i]
+        step_t = state_steps[i]
+        lr = lrs[i]
+
+        # If compiling, the compiler will handle cudagraph checks, see note [torch.compile x capturable]
+        if capturable and not torch._utils.is_compiling():
+            assert (
+                (param.is_cuda and step_t.is_cuda) or (param.is_xla and step_t.is_xla)
+            ), "If capturable=True, params and state_steps must be CUDA or XLA tensors."
+
+        # update step
+        step_t += 1
+
+        if capturable:
+            step = step_t
+        else:
+            step = step_t.item()
+
+        # NAG update   
+        if (v == 0).all():
+            v = torch.clone(-lr * g).detach()
+        else:
+            v = float(coef['v_v'](lr, gamma)) * v + float(coef['v_g'](lr, gamma)) * g
+        exp_avgs[i].copy_(v)
+        update = float(coef['theta_v'](lr, gamma)) * v + float(coef['theta_g'](lr, gamma)) * g
+        # update = gamma * v - lr * g
+        param.add_(update)
+
+        # Save info for SAV update
+        dp = epoch_delta_params[i]
+        sum_v = epoch_sum_exp_avgs[i]
+        sum_loss = epoch_sum_losses[i]
+        dp.add_(update)
+        sum_v.add_(v)
+        sum_loss += loss
+
+        if final_batch:     # Apply SAV update at the end of the epoch
+            ME = MEs[i]
+            r_tilde = r_tildes[i]
+            K = Ks[i]
+            sum_g = (dp - gamma * sum_v) / lr
+
+            if capturable:
+                ME_last = ME.clone()
+            else:
+                ME_last = ME.item()
+
+            ME = float(coef['ME_v'](lr, gamma)) * torch.sum(sum_v * sum_v) + float(coef['ME_f'](lr, gamma)) * sum_loss
+            MEs[i].copy_(ME)
+
+            if ME_type == 'PID':
+                K = float(coef['K_v'](lr, gamma))*torch.sum(sum_v * sum_v) + float(coef['K_g'](lr, gamma))*torch.sum(sum_g * sum_g)
+            elif ME_type == 'PD':
+                K = float(coef['K_tmp'](lr, gamma))*torch.sum(dp * dp) + float(coef['K_g'](lr, gamma))*torch.sum(sum_g * sum_g)
+            Ks[i].copy_(K)
+
+            if r_tilde == 0:    # first SAV update
+                r_tilde = torch.clone(ME).detach()
+
+            if ME_last != 0 and (ME - r_tilde > r_tilde * K / ME_last):
+                xi = 1 - (nu * r_tilde * K / ME_last / (ME - r_tilde)).item()
+                xi = max(xi, 0)
+            else:
+                xi = 0
+            r = xi * r_tilde + (1 - xi) * ME
+
+            r_tilde = r / (1 + K / ME)
+            r_tildes[i].copy_(r_tilde)   
+               
+            if adaptive:
+                indicator = r / ME
+                if indicator < beta and lr > lr_min:
+                    lr = max(indicator.item() * lr, torch.tensor(float(lr_min)))
+                else:
+                    lr = rho * lr
+            lrs[i].copy_(lr)
+
+            if opL == "trivial":
+                update = (r_tilde / ME - 1) * dp
+                param.add_(update)
+            elif opL == "diag_hessian":
+                # TODO: to be implemented
+                pass
+            else:
+                raise ValueError("Invalid linear operator `opL`. Choose 'trivial' or 'diag_hessian'.")
+
+            dp.zero_()
+            sum_v.zero_()
+            sum_loss.zero_()
 
 
 
@@ -656,6 +1011,7 @@ class NAdam_RSAV(Optimizer):
 
 
 
+
 def _single_tensor_NAdam_RSAV(params: List[Tensor],
                              grads: List[Tensor],
                              exp_avgs: List[Tensor],
@@ -745,7 +1101,6 @@ def _single_tensor_NAdam_RSAV(params: List[Tensor],
         
         savs.append((r / ME).item())
     return savs
-
 
 
 
@@ -920,6 +1275,7 @@ class NAdam_ERSAV(Optimizer):
             # group['savs_history'].append(savs)
             # TODO: _multi_tensor version is not implemented yet
         return loss
+
 
 
 
