@@ -23,7 +23,7 @@ For more information, see the documentation of each function or class.
 
 __all__ = ['gradients', 'Jacobian', 'partial_derivative', 'partial_derivative_vector', 
            'meshgrid_to_matrix', 'gen_collo', 'frequency_analysis',
-           'Domain', 'Domain_circle', 'Domain_2Dcomplex'
+           'Domain', 'Domain_circle', 'Domain_2Dcomplex',
            'inpolygon', 'inpolygonc', 'generate_polygon',
            ]
 
