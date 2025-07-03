@@ -24,7 +24,7 @@ For more information, see the documentation of each function or class.
 __all__ = ['gradients', 'Jacobian', 'partial_derivative', 'partial_derivative_vector', 
            'meshgrid_to_matrix', 'gen_collo', 'frequency_analysis',
            'Domain', 'Domain_circle', 'Domain_2Dcomplex',
-           'inpolygon', 'inpolygonc', 'generate_polygon',
+           'gaussian_cluster', 'inpolygon', 'inpolygonc', 'generate_polygon',
            ]
 
 import numpy as np
@@ -1315,6 +1315,74 @@ class Domain_circle:
         plt.show()
 
 
+def gaussian_cluster(N, center=(0, 0), confidence=0.95, radius=1.0, seed=None,
+                     dtype=None, device=None):
+    """
+    Generate N points from an isotropic 2D Gaussian distribution centered at `center`,
+    scaled so that approximately `confidence` proportion lie within a circle of given `radius`.
+
+    Automatically uses numpy or torch depending on the type of `center`.
+
+    Parameters
+    ----------
+    N : int
+        Number of points to generate.
+    center : list, tuple, np.ndarray or torch.Tensor
+        Center of the distribution. Type determines backend (numpy or torch).
+    confidence : float, default=0.95
+        Desired proportion of points to fall within the circle.
+    radius : float, default=1.0
+        Radius of the target circle.
+    seed : int or None
+        Random seed for reproducibility.
+    dtype : torch.dtype or None, optional
+        Data type for torch.Tensor output. If None, uses default dtype.
+    device : torch.device or None, optional
+        Device for torch.Tensor output. If None, uses default device.
+
+    Returns
+    -------
+    points : np.ndarray or torch.Tensor
+        Generated 2D points.
+    scaling_factor : float
+        Applied scaling factor.
+    """
+    if not (0 < confidence < 1):
+        raise ValueError("`confidence` must be between 0 and 1.")
+    if radius <= 0:
+        raise ValueError("`radius` must be positive.")
+
+    scaling_factor = radius * np.sqrt(1.0 / (-2.0 * np.log(1.0 - confidence)))
+
+    # Case 1: torch.Tensor (use PyTorch)
+    if isinstance(center, torch.Tensor):
+        if seed is not None:
+            torch.manual_seed(seed)
+        center = center.flatten()
+        assert center.numel() == 2, "center must be 2D"
+
+        if dtype is None:
+            dtype=center.dtype
+        if device is None:
+            device=center.device
+        points = torch.randn(N, 2, dtype=dtype, device=device) * scaling_factor
+        points += center
+
+        return points, scaling_factor.item()
+
+    # Case 2: list, tuple, np.ndarray (use NumPy)
+    else:
+        if seed is not None:
+            np.random.seed(seed)
+        center = np.array(center).flatten()
+        assert center.size == 2, "center must be 2D"
+
+        points = np.random.randn(N, 2) * scaling_factor
+        points += center
+
+        return points, scaling_factor
+
+
 
 def inpolygon(xq, yq, xv, yv, radius=0.):
     """
@@ -1730,3 +1798,43 @@ class Domain_2Dcomplex(Domain):
         distance = torch.cat(d, dim=0)
 
         return poles, distance, nkv
+    
+    def clusters(self, nkv, ratio=0.5):
+        """
+        Generate clusters of points near the corners of the polygon.
+        The points are sampled from a Gaussian distribution centered at each corner.
+
+        Parameters
+        ----------
+        nkv : int or list of int
+            Number of points to generate near each corner.
+            If an int, the same number is used for all corners.
+            If a list, specifies the number for each corner.
+        ratio : float, default 0.5
+            The radius of each cluster is set to `ratio` times the minimum distance
+            between the current corner and its adjacent corners.
+
+        Returns
+        -------
+        points : torch.Tensor, shape (N_points, 2)
+            Clustered points in Cartesian coordinates.
+        """
+        nw = len(self.P)
+        if isinstance(nkv, int):
+            nkv = [nkv] * nw
+        elif isinstance(nkv, list) and len(nkv) == nw:
+            pass
+        else:
+            raise ValueError('Invalid number of points!')
+        
+        corners = torch.stack([self.w.real, self.w.imag], dim=1)  # convert to Cartesian coordinates
+        points = []
+        for k in range(nw):
+            nk = nkv[k]  # no. of points at this corner
+            radius = min(self.dw[k].item(), self.dw[(k-1) % nw].item()) * ratio  # radius of the cluster
+            # Generate points from a Gaussian distribution centered at the corner
+            cluster_points, _ = gaussian_cluster(nk, center=corners[k], radius=radius, dtype=self.dtype, device=self.device)
+            points.append(cluster_points)
+        points = torch.cat(points, dim=0)  # all poles
+
+        return points
