@@ -110,6 +110,7 @@ def ax_config(ax,
             title=None, title_fontsize=12., title_y=1., title_pad=6.,
             xlabel=None, xlabel_fontsize=12.,
             ylabel=None, ylabel_fontsize=12.,
+            rlabel_pos=None,
             xlims=None, ylims=None,
             spine_width=0.8, spine_color='gray',
             tick_major=True, 
@@ -132,7 +133,7 @@ def ax_config(ax,
             legend_loc='best', legend_bbox_to_anchor=None, 
             legend_edgecolor='C0', legend_facecolor='1', legend_framealpha=0.3, 
             legend_fontsize=10., legend_ncol=1, legend_handlelength=2.,
-            sci_fmt=False, scilimits=(0, 0)):
+            sci_fmt=False, scilimits=(0, 0), axis_equal=False):
     """
     Configure the plot with title, labels, spine, tick, grid, and legend parameters for a given Axes object.
 
@@ -147,6 +148,7 @@ def ax_config(ax,
     xlabel_fontsize (float): Font size of the x-axis label.
     ylabel (str): Label of the y-axis.
     ylabel_fontsize (float): Font size of the y-axis label.
+    rlabel_pos (float): Degree position of the radial labels in polar plots.
     xlims (2-tuple): Limits of the x-axis.
     ylims (2-tuple): Limits of the y-axis.
     spine_width (float): Width of the spines.
@@ -192,6 +194,7 @@ def ax_config(ax,
     legend_handlelength (float): Length of the legend handles.
     sci_fmt (bool): Whether to use scientific format for the y-axis ticks.
     scilimits (2-tuple): Limits for scientific notation.
+    axis_equal (bool): Whether to set equal aspect ratio for the axes.
     """
     if title is not None:
         ax.set_title(title, fontsize=title_fontsize, y=title_y, pad=title_pad)
@@ -207,6 +210,8 @@ def ax_config(ax,
     if ax.name == 'polar':
         ax.spines['polar'].set_linewidth(spine_width)
         ax.spines['polar'].set_edgecolor(spine_color)
+        if rlabel_pos:
+            ax.set_rlabel_position(rlabel_pos)
     else:
         for spine in ['top', 'bottom', 'left', 'right']:
             ax.spines[spine].set_linewidth(spine_width)
@@ -252,6 +257,8 @@ def ax_config(ax,
     if sci_fmt:    
         ax.yaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
         ax.ticklabel_format(style='sci', axis='y', scilimits=scilimits)
+    if axis_equal:
+        ax.set_aspect('equal')
 
 
 def ax3d_config(ax, axis3don=True, view_angle=[5, 45], 
@@ -393,10 +400,13 @@ def colorbar_config(img, cax=None, ax=None, label=None, labelsize=10,
     ----------
     img : ScalarMappable object
         The image object created by ax.imshow() or similar functions.
-    cax : `~matplotlib.axes.Axes`, optional
-        Axes into which the colorbar will be drawn.  If `None`, then a new
-        Axes is created and the space for it will be stolen from the Axes(s)
-        specified in *ax*.
+    cax : list or `~matplotlib.axes.Axes`, optional
+        Axes into which the colorbar will be drawn.
+        If list, it should be a 4-element list [x, y, width, height] specifying
+        the position and size of the colorbar in figure coordinates (0-1 range).
+        If `~matplotlib.axes.Axes`, uses the provided axes for the colorbar.
+        If `None`, then a new Axes is created and the space for it will be stolen
+        from the Axes(s) specified in *ax*.
     ax : `~matplotlib.axes.Axes` or iterable or `numpy.ndarray` of Axes, optional
         The one or more parent Axes from which space for a new colorbar Axes
         will be stolen. This parameter is only used if *cax* is not set.
@@ -453,7 +463,10 @@ def colorbar_config(img, cax=None, ax=None, label=None, labelsize=10,
         The first element represents the x position of the right side of the scientific notation text, where 0 is the left edge and 1 is the right edge.
         The second element represents the y position of the bottom side of the scientific notation text, where 0 is the bottom edge and 1 is the top edge.
     """
-    
+    if isinstance(cax, list) and len(cax) == 4:
+        # If cax is a list, create a new Axes at the specified position
+        fig = img.get_figure()
+        cax = fig.add_axes(cax)
     # Add colorbar
     if ax and ax.name == 'rectilinear':
         if cax is None and ax is not None:        
